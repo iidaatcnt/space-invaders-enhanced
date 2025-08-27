@@ -753,7 +753,10 @@
     let boss = null;
 
     function setupLevel(){
-      invaders.length=0; bullets.length=0; enemyBullets.length=0; ufo=null; boss=null;
+      invaders.length=0; bullets.length=0; enemyBullets.length=0; 
+      // Stop UFO tremolo before clearing UFO
+      if(ufo) ufo.stopTremolo();
+      ufo=null; boss=null;
       // Reduced enemy count: 8x4 instead of 11x5 for more casual gameplay
       const cols=8, rows=4; const startX=180, gapX=64, startY=120, gapY=40;
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
@@ -764,7 +767,10 @@
     }
     
     function setupBossLevel(){
-      invaders.length=0; bullets.length=0; enemyBullets.length=0; ufo=null;
+      invaders.length=0; bullets.length=0; enemyBullets.length=0; 
+      // Stop UFO tremolo before clearing UFO
+      if(ufo) ufo.stopTremolo();
+      ufo=null;
       boss = new Boss();
       // Fewer shields for boss battle
       const y=H-140; shields=[ new Shield(W*0.3,y), new Shield(W*0.7,y) ];
@@ -863,9 +869,9 @@
       if(state==='playing'){ 
         state='paused'; 
         pausedScreen.classList.remove('hidden'); 
-        stopBGM(); // Stop music during pause
+        stopBGM(); // Stop all background music during pause
         // Stop UFO tremolo if playing
-        if(ufo && ufo.tremoloPlaying) {
+        if(ufo) {
           ufo.stopTremolo();
         }
       } else if(state==='paused'){ 
@@ -939,13 +945,21 @@
         boss.update(dt);
         if(!boss.alive && state === 'playing'){
           beep('sawtooth',600,.12,.03);
+          // Stop UFO tremolo when level cleared
+          if(ufo) ufo.stopTremolo();
           nextLevel();
           return;
         }
       } else {
         // Invader marching
         const alive = invaders.filter(i=>i.alive);
-        if(alive.length===0 && state === 'playing'){ beep('sawtooth',600,.12,.03); nextLevel(); return; }
+        if(alive.length===0 && state === 'playing'){ 
+          beep('sawtooth',600,.12,.03);
+          // Stop UFO tremolo when level cleared
+          if(ufo) ufo.stopTremolo();
+          nextLevel(); 
+          return; 
+        }
       }
 
       if(!boss){
@@ -958,7 +972,31 @@
         if((edgeLeft && invDir<0) || (edgeRight && invDir>0)){ invDir*=-1; for(const i of alive){ i.y += invStepDown; } invSpeed += 6; beep('triangle',220,.05,.008); }
         for(const i of alive){ 
           i.update(dt);
-          i.x += invDir * invSpeed * dt * i.speedMultiplier; 
+          i.x += invDir * invSpeed * dt * i.speedMultiplier;
+          
+          // Check invader collision with shields - destroy shield blocks
+          for(const sh of shields){
+            const invRect = i.rect();
+            // Check if invader overlaps shield area
+            if(invRect.x < sh.x + sh.cols * sh.cell/2 &&
+               invRect.x + invRect.w > sh.x - sh.cols * sh.cell/2 &&
+               invRect.y < sh.y + sh.rows * sh.cell/2 &&
+               invRect.y + invRect.h > sh.y - sh.rows * sh.cell/2){
+              // Clear overlapping shield cells
+              for(let r = 0; r < sh.rows; r++){
+                for(let c = 0; c < sh.cols; c++){
+                  const cellX = sh.x - sh.cols * sh.cell/2 + c * sh.cell;
+                  const cellY = sh.y - sh.rows * sh.cell/2 + r * sh.cell;
+                  if(cellX < invRect.x + invRect.w &&
+                     cellX + sh.cell > invRect.x &&
+                     cellY < invRect.y + invRect.h &&
+                     cellY + sh.cell > invRect.y){
+                    sh.grid[r][c] = 0; // Destroy shield cell
+                  }
+                }
+              }
+            }
+          }
         }
 
         // Enemy fire
@@ -1035,7 +1073,13 @@
           floatingTexts.push(new FloatingText(`+${ufo.points}`, ufo.x, ufo.y-10)); 
           ufo.stopTremolo(); // Stop tremolo sound when destroyed
           ufo.alive=false; b.dead=true; 
-          beep('square', 900, .09, .03);
+          
+          // Special UFO destruction sound - descending melody
+          beep('square', 1200, .08, .04);
+          setTimeout(() => beep('square', 900, .08, .04), 80);
+          setTimeout(() => beep('square', 600, .08, .04), 160);
+          setTimeout(() => beep('sawtooth', 400, .12, .05), 240);
+          
           // Create bigger explosion for UFO
           createExplosion(ufo.x, ufo.y, '#ff6d7a', 25);
         }}
