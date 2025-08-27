@@ -101,6 +101,19 @@
     let specialAvailable = true; // 1ゲームに1回
     let combo = 0;
     let comboTimer = 0;
+    let waveTransition = false;
+    let waveTransitionTimer = 0;
+    let isBossLevel = false;
+    
+    // Achievement system
+    let achievements = JSON.parse(localStorage.getItem('space_invaders_achievements') || '{}');
+    let sessionStats = {
+      enemiesKilled: 0,
+      maxCombo: 0,
+      bossesDefeated: 0,
+      powerUpsCollected: 0,
+      specialUsed: false
+    };
 
     // HUD hooks
     const $ = sel => document.querySelector(sel);
@@ -117,6 +130,58 @@
       hiEl.textContent  = hiscore.toString().padStart(4,'0');
       lvEl.textContent  = level;
       livesEl.textContent = lives;
+    }
+    
+    // Achievement checking
+    const achievementList = {
+      'first_kill': { name: '初撃破', desc: '初めて敵を倒した', icon: '🎯' },
+      'combo_master': { name: 'コンボマスター', desc: '10連続コンボを達成', icon: '🔥' },
+      'boss_slayer': { name: 'ボス討伐者', desc: 'ボスを倒した', icon: '👑' },
+      'power_collector': { name: 'パワーアップ収集家', desc: 'パワーアップを10個取得', icon: '💎' },
+      'special_user': { name: '必殺技使い', desc: '必殺技を使用', icon: '⚡' },
+      'survivor': { name: 'サバイバー', desc: 'レベル10に到達', icon: '🛡️' },
+      'high_scorer': { name: 'ハイスコアラー', desc: '10000点を獲得', icon: '⭐' }
+    };
+    
+    function checkAchievement(key) {
+      if(achievements[key]) return; // Already unlocked
+      
+      let unlock = false;
+      switch(key) {
+        case 'first_kill':
+          unlock = sessionStats.enemiesKilled >= 1;
+          break;
+        case 'combo_master':
+          unlock = sessionStats.maxCombo >= 10;
+          break;
+        case 'boss_slayer':
+          unlock = sessionStats.bossesDefeated >= 1;
+          break;
+        case 'power_collector':
+          unlock = sessionStats.powerUpsCollected >= 10;
+          break;
+        case 'special_user':
+          unlock = sessionStats.specialUsed;
+          break;
+        case 'survivor':
+          unlock = level >= 10;
+          break;
+        case 'high_scorer':
+          unlock = score >= 10000;
+          break;
+      }
+      
+      if(unlock) {
+        achievements[key] = true;
+        localStorage.setItem('space_invaders_achievements', JSON.stringify(achievements));
+        const ach = achievementList[key];
+        floatingTexts.push(new FloatingText(`🏆 ${ach.name}`, W/2, H/2 - 50));
+        beep('sawtooth', 800, .15, .04);
+      }
+    }
+    
+    function checkAllAchievements() {
+      Object.keys(achievementList).forEach(checkAchievement);
     }
 
     // ===== Input =====
@@ -172,6 +237,9 @@
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const audio = new AudioCtx();
     let muted = false;
+    let bgMusicPlaying = false;
+    let currentBgMusic = null;
+    
     function beep(type='square', freq=440, dur=0.06, gain=0.015){
       if(muted || audio.state!=='running') return;
       const t0 = audio.currentTime;
@@ -183,12 +251,55 @@
       o.connect(g).connect(audio.destination);
       o.start(t0); o.stop(t0+dur);
     }
+    
+    // Simple background music using oscillators
+    function playBGM(type = 'normal'){
+      if(muted || audio.state !== 'running' || bgMusicPlaying) return;
+      
+      bgMusicPlaying = true;
+      const melody = type === 'boss' ? 
+        [220, 196, 174, 196, 220, 196, 174, 164] : // Boss theme
+        [330, 294, 262, 294, 330, 294, 262, 247]; // Normal theme
+      
+      let noteIndex = 0;
+      const playNote = () => {
+        if(!bgMusicPlaying) return;
+        
+        const freq = melody[noteIndex % melody.length];
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.003, audio.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.4);
+        
+        osc.connect(gain).connect(audio.destination);
+        osc.start();
+        osc.stop(audio.currentTime + 0.4);
+        
+        noteIndex++;
+        currentBgMusic = setTimeout(playNote, 500);
+      };
+      
+      playNote();
+    }
+    
+    function stopBGM(){
+      bgMusicPlaying = false;
+      if(currentBgMusic) clearTimeout(currentBgMusic);
+    }
+    
     window.addEventListener('pointerdown', ()=>{ if(audio.state!=='running') audio.resume(); }, {once:true});
 
     // ===== Entities =====
     class Bullet{
-      constructor(x,y,vy,from,w=3,h=10){this.x=x; this.y=y; this.vy=vy; this.w=w; this.h=h; this.from=from; this.dead=false;}
-      update(dt){ this.y += this.vy*dt; if(this.y<-40||this.y>H+40) this.dead=true; }
+      constructor(x,y,vy,from,w=3,h=10){this.x=x; this.y=y; this.vy=vy; this.w=w; this.h=h; this.from=from; this.dead=false; this.vx=0;}
+      update(dt){ 
+        this.x += this.vx*dt;
+        this.y += this.vy*dt; 
+        if(this.y<-40||this.y>H+40||this.x<-40||this.x>W+40) this.dead=true; 
+      }
       draw(){ ctx.fillStyle = this.from==='player'? '#42ff88' : '#ff8a8a'; ctx.fillRect(this.x-this.w/2, this.y-this.h/2, this.w, this.h); }
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
     }
@@ -261,6 +372,7 @@
     function useSpecial(){
       if(!specialAvailable || state!=='playing') return;
       specialAvailable = false;
+      sessionStats.specialUsed = true;
       // ワイドミサイル: 左右に広がる7連射（太弾）
       for(let i=-3;i<=3;i++){
         const dx = i*12;
@@ -268,16 +380,68 @@
       }
       beep('sawtooth', 500, .2, .05);
       floatingTexts.push(new FloatingText('必殺技!', player.x, player.y-30));
+      checkAllAchievements();
     }
 
-    class Invader{ constructor(x,y,row){ this.x=x; this.y=y; this.w=30; this.h=22; this.row=row; this.alive=true; this.anim=0; this.value= [30,30,20,20,10][row] || 10; }
-      draw(){ if(!this.alive) return; ctx.save(); ctx.translate(this.x, this.y); this.anim+=0.08; const t=this.anim; ctx.fillStyle = ['#8aa0ff','#8aa0ff','#66e6ff','#66e6ff','#98ffcc'][this.row]||'#98ffcc';
+    class Invader{ 
+      constructor(x,y,row){ 
+        this.x=x; this.y=y; this.w=30; this.h=22; this.row=row; this.alive=true; this.anim=0; 
+        this.value= [30,30,20,20,10][row] || 10;
+        this.type = 'normal';
+        this.zigzagOffset = 0;
+        this.speedMultiplier = 1;
+        
+        // Special invader types for higher levels
+        if(level >= 3 && Math.random() < 0.15){
+          this.type = 'zigzag';
+          this.value *= 2;
+        } else if(level >= 5 && Math.random() < 0.1){
+          this.type = 'fast';
+          this.speedMultiplier = 2;
+          this.value *= 1.5;
+        }
+      }
+      
+      update(dt){
+        if(!this.alive) return;
+        this.anim += 0.08;
+        
+        if(this.type === 'zigzag'){
+          this.zigzagOffset += dt * 3;
+          this.y += Math.sin(this.zigzagOffset) * 0.5;
+        }
+      }
+      
+      draw(){ 
+        if(!this.alive) return; 
+        ctx.save(); 
+        ctx.translate(this.x, this.y); 
+        const t=this.anim; 
+        
+        let color = ['#8aa0ff','#8aa0ff','#66e6ff','#66e6ff','#98ffcc'][this.row]||'#98ffcc';
+        if(this.type === 'zigzag') color = '#ff9d42';
+        if(this.type === 'fast') color = '#ff4242';
+        
+        ctx.fillStyle = color;
         const up = Math.sin(t)>0;
         const w=this.w, h=this.h;
         ctx.fillRect(-w/2, -h/2, w, 6);
         ctx.fillRect(-w/2+ (up?4:2), -h/2+6, w-(up?8:4), 6);
         ctx.fillRect(-w/2+ (up?10:8), -h/2+12, w-(up?20:16), 6);
-        ctx.restore(); }
+        
+        // Special type indicators
+        if(this.type === 'zigzag'){
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-2, -2, 4, 4);
+        } else if(this.type === 'fast'){
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-6, -4, 3, 2);
+          ctx.fillRect(3, -4, 3, 2);
+        }
+        
+        ctx.restore(); 
+      }
+      
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
     }
 
@@ -290,6 +454,115 @@
       update(dt){ this.x += this.vx*dt; if(this.x<-100||this.x>W+100) this.alive=false; }
       draw(){ if(!this.alive) return; ctx.save(); ctx.translate(this.x, this.y); ctx.fillStyle='#ff6d7a'; ctx.fillRect(-24,-6,48,12); ctx.fillRect(-16,-10,32,8); ctx.fillStyle='#ffd1d6'; ctx.fillRect(-6,-14,12,6); ctx.restore(); }
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
+    }
+    
+    // Boss class
+    class Boss{
+      constructor(){
+        this.x = W/2;
+        this.y = 100;
+        this.w = 120;
+        this.h = 60;
+        this.hp = 20 + level * 2;
+        this.maxHp = this.hp;
+        this.alive = true;
+        this.moveTimer = 0;
+        this.targetX = W/2;
+        this.fireTimer = 0;
+        this.phase = 1;
+      }
+      
+      update(dt){
+        if(!this.alive) return;
+        
+        // Movement pattern
+        this.moveTimer += dt;
+        if(this.moveTimer > 2){
+          this.targetX = rand(150, W-150);
+          this.moveTimer = 0;
+        }
+        
+        // Smooth movement to target
+        const dx = this.targetX - this.x;
+        this.x += dx * dt * 2;
+        
+        // Boss shooting
+        this.fireTimer -= dt;
+        if(this.fireTimer <= 0){
+          // Fire pattern based on phase
+          if(this.phase === 1){
+            // Single powerful shot
+            enemyBullets.push(new Bullet(this.x, this.y + 30, 250, 'enemy', 5, 15));
+          } else if(this.phase === 2){
+            // Triple shot
+            for(let i = -1; i <= 1; i++){
+              enemyBullets.push(new Bullet(this.x + i*30, this.y + 30, 280, 'enemy'));
+            }
+          } else {
+            // Spread shot
+            for(let i = -2; i <= 2; i++){
+              const angle = i * 0.2;
+              const vx = Math.sin(angle) * 200;
+              const vy = Math.cos(angle) * 200 + 100;
+              const b = new Bullet(this.x, this.y + 30, vy, 'enemy');
+              b.vx = vx;
+              enemyBullets.push(b);
+            }
+          }
+          beep('sine', 150, .08, .02);
+          this.fireTimer = clamp(1.5 - this.phase * 0.3, 0.5, 1.5);
+        }
+        
+        // Phase change based on HP
+        if(this.hp <= this.maxHp * 0.66 && this.phase === 1) this.phase = 2;
+        if(this.hp <= this.maxHp * 0.33 && this.phase === 2) this.phase = 3;
+      }
+      
+      draw(){
+        if(!this.alive) return;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        
+        // Boss body with phase-based color
+        const color = this.phase === 1 ? '#ff4444' : 
+                     this.phase === 2 ? '#ff8844' : '#ffaa44';
+        ctx.fillStyle = color;
+        
+        // Main body
+        ctx.fillRect(-60, -20, 120, 40);
+        ctx.fillRect(-50, -30, 100, 60);
+        ctx.fillRect(-40, -35, 80, 70);
+        
+        // Eyes
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-30, -10, 10, 10);
+        ctx.fillRect(20, -10, 10, 10);
+        
+        // HP bar
+        ctx.fillStyle = 'rgba(255,0,0,0.5)';
+        ctx.fillRect(-60, -50, 120, 8);
+        ctx.fillStyle = '#00ff00';
+        ctx.fillRect(-60, -50, 120 * (this.hp / this.maxHp), 8);
+        
+        ctx.restore();
+      }
+      
+      rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
+      
+      hit(){
+        this.hp--;
+        if(this.hp <= 0){
+          this.alive = false;
+          // Big explosion
+          for(let i = 0; i < 50; i++){
+            particles.push(new Particle(this.x + rand(-60, 60), this.y + rand(-30, 30), '#ff4444'));
+          }
+          // Big points
+          score += 1000 * level;
+          floatingTexts.push(new FloatingText(`BOSS DEFEATED! +${1000 * level}`, this.x, this.y));
+          beep('sawtooth', 100, .3, .05);
+        }
+      }
     }
 
     // Power-up class
@@ -353,9 +626,10 @@
     let player; let invaders=[]; let bullets=[]; let enemyBullets=[]; let shields=[]; let ufo=null; let invDir=1; let invSpeed=32; let invStepDown=18; let fireTimer=0; let ufoTimer=rand(12,24);
     let powerUps = [];
     let powerUpTimer = rand(8, 15);
+    let boss = null;
 
     function setupLevel(){
-      invaders.length=0; bullets.length=0; enemyBullets.length=0; ufo=null;
+      invaders.length=0; bullets.length=0; enemyBullets.length=0; ufo=null; boss=null;
       const cols=11, rows=5; const startX=120, gapX=64, startY=120, gapY=40;
       for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
         invaders.push(new Invader(startX + c*gapX, startY + r*gapY, r));
@@ -363,22 +637,61 @@
       invDir=1; invSpeed= 28 + (level-1)*4; // レベルで少し速く
       const y=H-140; shields=[ new Shield(W*0.2,y), new Shield(W*0.5,y), new Shield(W*0.8,y) ];
     }
+    
+    function setupBossLevel(){
+      invaders.length=0; bullets.length=0; enemyBullets.length=0; ufo=null;
+      boss = new Boss();
+      // Fewer shields for boss battle
+      const y=H-140; shields=[ new Shield(W*0.3,y), new Shield(W*0.7,y) ];
+      floatingTexts.push(new FloatingText('BOSS BATTLE!', W/2, H/2));
+    }
 
     function startGame(){
       state='playing'; score=0; level=1; lives=3; specialAvailable=true;
       player = new Player(); setupLevel(); updateHUD(); hideAllPanels();
       if(audio.state!=='running') audio.resume();
+      stopBGM();
+      setTimeout(() => playBGM('normal'), 500);
     }
 
-    function nextLevel(){ level++; invSpeed += 6; setupLevel(); updateHUD(); }
+    function nextLevel(){ 
+      level++; 
+      // Start wave transition
+      waveTransition = true;
+      waveTransitionTimer = 2.5;
+      state = 'transition';
+      
+      // Check for boss level (every 5 levels)
+      isBossLevel = (level % 5 === 0);
+      
+      setTimeout(() => {
+        invSpeed += 6; 
+        if(isBossLevel) {
+          setupBossLevel();
+          stopBGM();
+          setTimeout(() => playBGM('boss'), 500);
+        } else {
+          setupLevel();
+          stopBGM();
+          setTimeout(() => playBGM('normal'), 500);
+        }
+        updateHUD();
+        state = 'playing';
+        waveTransition = false;
+      }, 2500);
+    }
 
-    function restart(){ state='title'; hideAllPanels(); titleScreen.classList.remove('hidden'); }
+    function restart(){ 
+      state='title'; hideAllPanels(); titleScreen.classList.remove('hidden'); 
+      stopBGM();
+    }
 
     function gameOver(){
       state='gameover'; hiscore = Math.max(hiscore, score); localStorage.setItem('inv_hi', String(hiscore)); updateHUD();
       document.getElementById('final-score').textContent = String(score);
       document.getElementById('final-hiscore').textContent = String(hiscore);
       hideAllPanels(); overScreen.classList.remove('hidden');
+      stopBGM();
     }
 
     function togglePause(){ if(state==='playing'){ state='paused'; pausedScreen.classList.remove('hidden'); } else if(state==='paused'){ state='playing'; pausedScreen.classList.add('hidden'); } }
@@ -397,7 +710,10 @@
     // ===== Main Loop =====
     let last=0;
     function loop(ts){
-      const now=ts||0; const dt = Math.min(0.033,(now - last)/1000||0); last=now; if(state==='playing') update(dt); draw(); requestAnimationFrame(loop);
+      const now=ts||0; const dt = Math.min(0.033,(now - last)/1000||0); last=now; 
+      if(state==='playing'||state==='transition') update(dt); 
+      draw(); 
+      requestAnimationFrame(loop);
     }
 
     function update(dt){
@@ -423,29 +739,50 @@
       // Update power-ups
       for(const p of powerUps) p.update(dt);
 
-      // Invader marching
-      const alive = invaders.filter(i=>i.alive);
-      if(alive.length===0){ beep('sawtooth',600,.12,.03); nextLevel(); return; }
-
-      // bounds of alive invaders
-      let minX=Infinity, maxX=-Infinity, maxY=-Infinity;
-      for(const i of alive){ if(i.x<minX) minX=i.x; if(i.x>maxX) maxX=i.x; if(i.y>maxY) maxY=i.y; }
-      const edgeLeft = (minX-30) <= 10;
-      const edgeRight = (maxX+30) >= (W-10);
-      if((edgeLeft && invDir<0) || (edgeRight && invDir>0)){ invDir*=-1; for(const i of alive){ i.y += invStepDown; } invSpeed += 6; beep('triangle',220,.05,.008); }
-      for(const i of alive){ i.x += invDir * invSpeed * dt; }
-
-      // Enemy fire
-      fireTimer -= dt;
-      if(fireTimer<=0){
-        const bottoms = bottomInvadersByColumn();
-        if(bottoms.length){ const shooter = choice(bottoms); enemyBullets.push(new Bullet(shooter.x, shooter.y+16, rand(160,220), 'enemy')); beep('sine', 220, .05, .01); }
-        fireTimer = clamp(1.1 - level*0.05, 0.3, 1.1);
+      // Boss update
+      if(boss){
+        boss.update(dt);
+        if(!boss.alive){
+          beep('sawtooth',600,.12,.03);
+          nextLevel();
+          return;
+        }
+      } else {
+        // Invader marching
+        const alive = invaders.filter(i=>i.alive);
+        if(alive.length===0){ beep('sawtooth',600,.12,.03); nextLevel(); return; }
       }
 
-      // UFO spawn
-      ufoTimer -= dt; if(ufoTimer<=0 && !ufo){ ufo = new UFO(); beep('sawtooth', 520, .08, .018); ufoTimer = rand(16, 28); }
-      if(ufo){ ufo.update(dt); if(!ufo.alive) ufo=null; }
+      if(!boss){
+        // bounds of alive invaders
+        const alive = invaders.filter(i=>i.alive);
+        let minX=Infinity, maxX=-Infinity, maxY=-Infinity;
+        for(const i of alive){ if(i.x<minX) minX=i.x; if(i.x>maxX) maxX=i.x; if(i.y>maxY) maxY=i.y; }
+        const edgeLeft = (minX-30) <= 10;
+        const edgeRight = (maxX+30) >= (W-10);
+        if((edgeLeft && invDir<0) || (edgeRight && invDir>0)){ invDir*=-1; for(const i of alive){ i.y += invStepDown; } invSpeed += 6; beep('triangle',220,.05,.008); }
+        for(const i of alive){ 
+          i.update(dt);
+          i.x += invDir * invSpeed * dt * i.speedMultiplier; 
+        }
+
+        // Enemy fire
+        fireTimer -= dt;
+        if(fireTimer<=0){
+          const bottoms = bottomInvadersByColumn();
+          if(bottoms.length){ const shooter = choice(bottoms); enemyBullets.push(new Bullet(shooter.x, shooter.y+16, rand(160,220), 'enemy')); beep('sine', 220, .05, .01); }
+          fireTimer = clamp(1.1 - level*0.05, 0.3, 1.1);
+        }
+        
+        // Lose when invaders reach player line
+        if(maxY >= player.y - 10){ gameOver(); }
+      }
+
+      // UFO spawn (not during boss battles)
+      if(!boss){
+        ufoTimer -= dt; if(ufoTimer<=0 && !ufo){ ufo = new UFO(); beep('sawtooth', 520, .08, .018); ufoTimer = rand(16, 28); }
+        if(ufo){ ufo.update(dt); if(!ufo.alive) ufo=null; }
+      }
 
       // Bullets
       for(const b of bullets) b.update(dt);
@@ -458,11 +795,14 @@
           
           // Combo system
           combo++;
+          sessionStats.enemiesKilled++;
+          sessionStats.maxCombo = Math.max(sessionStats.maxCombo, combo);
           comboTimer = 1.5; // 1.5 seconds to maintain combo
           const comboMultiplier = Math.min(combo, 10);
           const points = inv.value * comboMultiplier;
           score += points;
           updateHUD();
+          checkAllAchievements();
           
           // Show combo feedback
           if(combo > 1){
@@ -490,6 +830,17 @@
           // Create bigger explosion for UFO
           createExplosion(ufo.x, ufo.y, '#ff6d7a', 25);
         }}
+        
+        // Boss collision
+        if(!b.dead && boss){ if(overlap(br, boss.rect())){ 
+          boss.hit(); b.dead=true; 
+          beep('square', 400, .08, .03);
+          createExplosion(b.x, b.y, '#ff4444', 8);
+          if(!boss.alive) {
+            sessionStats.bossesDefeated++;
+            checkAllAchievements();
+          }
+        }}
       }
 
       // Enemy bullets vs player/shields
@@ -504,6 +855,8 @@
         if(p.dead) continue;
         if(overlap(p.rect(), player.rect())){
           p.dead = true;
+          
+          sessionStats.powerUpsCollected++;
           
           if(p.type === 'shield'){
             // Repair shields
@@ -523,15 +876,14 @@
             floatingTexts.push(new FloatingText(text, player.x, player.y - 40));
             beep('sawtooth', 1200, .1, .03);
           }
+          
+          checkAllAchievements();
         }
       }
       
       bullets = bullets.filter(b=>!b.dead);
       enemyBullets = enemyBullets.filter(b=>!b.dead);
       powerUps = powerUps.filter(p=>!p.dead);
-
-      // Lose when invaders reach player line（プレーヤー位置付近）
-      if(maxY >= player.y - 10){ gameOver(); }
 
       // Floating texts
       for(const ft of floatingTexts) ft.update(dt);
@@ -604,8 +956,35 @@
       for(const b of bullets) b.draw();
       for(const b of enemyBullets) b.draw();
       if(ufo) ufo.draw();
+      if(boss) boss.draw();
       for(const p of particles) p.draw();
       for(const ft of floatingTexts) ft.draw();
+      
+      // Wave transition effect
+      if(waveTransition){
+        const progress = 1 - (waveTransitionTimer / 2.5);
+        ctx.save();
+        ctx.fillStyle = `rgba(11,15,26,${0.8 * Math.sin(progress * Math.PI)})`;
+        ctx.fillRect(0, 0, W, H);
+        
+        // Wave text
+        ctx.fillStyle = '#42ff88';
+        ctx.font = 'bold 48px ui-sans-serif, system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        if(isBossLevel){
+          ctx.fillStyle = '#ff4444';
+          ctx.fillText(`LEVEL ${level}`, W/2, H/2 - 40);
+          ctx.fillText('BOSS BATTLE!', W/2, H/2 + 20);
+        } else {
+          ctx.fillText(`WAVE ${level}`, W/2, H/2);
+        }
+        
+        ctx.restore();
+        waveTransitionTimer -= 0.016;
+      }
+      
       if(flashT>0){ ctx.fillStyle='rgba(255,255,255,'+flashT.toFixed(2)+')'; ctx.fillRect(0,0,W,H); flashT-=0.016; }
     }
 
