@@ -85,6 +85,15 @@ Works on all modern browsers that support:
 - Web Audio API
 - ES6 JavaScript
 
+## Recent Updates
+
+- 🎮 Enhanced gameplay with boss battles every 5 levels
+- 💥 Particle explosion effects and power-up systems  
+- 📱 Mobile-friendly touch controls
+- 🏆 Achievement system with persistent tracking
+- 🎵 Improved audio effects and background music
+- 🛡️ Redesigned shield system with realistic physics
+
 ## License
 
 MIT
