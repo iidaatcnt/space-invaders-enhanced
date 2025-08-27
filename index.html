@@ -143,6 +143,10 @@
     const W=960, H=600;
     canvas.style.aspectRatio = `${W}/${H}`;
     
+    // Mobile detection (moved up)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                     ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    
     // Mobile optimization - reduce particles on mobile
     const MAX_PARTICLES = isMobile ? 200 : 500;
     const PARTICLE_COUNT = isMobile ? 8 : 12;
@@ -165,12 +169,6 @@
     
     // Achievement system
     let achievements = JSON.parse(localStorage.getItem('space_invaders_achievements') || '{}');
-    let sessionStats = {
-      enemiesKilled: 0,
-      maxCombo: 0,
-      bossesDefeated: 0,
-      powerUpsCollected: 0
-    };
 
     // HUD hooks
     const $ = sel => document.querySelector(sel);
@@ -259,9 +257,7 @@
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     
-    // Enhanced Mobile controls
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-                     ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    // Enhanced Mobile controls (isMobile already defined above)
     
     // Always enable mobile controls on touch devices
     if(isMobile || window.innerWidth <= 768){
@@ -857,6 +853,30 @@
     let powerUps = [];
     let powerUpTimer = rand(8, 15);
     let boss = null;
+    let specialAvailable = true;
+    
+    // Special attack function
+    function useSpecial(){
+      if(!specialAvailable || state !== 'playing' || !player) return;
+      
+      // 7-shot spread attack
+      for(let i = -3; i <= 3; i++){
+        const angle = i * 0.2;
+        const vx = Math.sin(angle) * 100;
+        const vy = -480;
+        const b = new Bullet(player.x + i * 8, player.y - 18, vy, 'player', 8, 12);
+        b.vx = vx;
+        bullets.push(b);
+      }
+      
+      specialAvailable = false;
+      floatingTexts.push(new FloatingText('SPECIAL ATTACK!', player.x, player.y - 50));
+      
+      // Special attack sound - rapid beeps
+      for(let i = 0; i < 5; i++){
+        setTimeout(() => beep('square', 800 + i * 100, .05, .02), i * 40);
+      }
+    }
 
     function setupLevel(){
       invaders.length=0; bullets.length=0; enemyBullets.length=0; 
@@ -895,6 +915,7 @@
       state='playing'; score=0; level=1; lives=5; // More lives for casual play
       combo = 0; comboTimer = 0; // Reset combo
       waveTransition = false; waveTransitionTimer = 0; // Reset transition
+      specialAvailable = true; // Reset special attack
       
       // Reset session stats
       sessionStats = {
