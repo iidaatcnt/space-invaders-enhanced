@@ -436,14 +436,122 @@
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
     }
 
-    class Shield{ constructor(x,y){ this.x=x; this.y=y; this.cell=8; this.cols=12; this.rows=6; this.grid=Array.from({length:this.rows},()=>Array(this.cols).fill(2)); }
-      hit(px,py){ const lx = Math.floor((px - (this.x - this.cols*this.cell/2))/this.cell); const ly = Math.floor((py - (this.y - this.rows*this.cell/2))/this.cell); if(lx<0||ly<0||lx>=this.cols||ly>=this.rows) return false; if(this.grid[ly][lx]>0){ this.grid[ly][lx]--; return true; } return false; }
-      draw(){ ctx.save(); ctx.translate(this.x - this.cols*this.cell/2, this.y - this.rows*this.cell/2); for(let r=0;r<this.rows;r++) for(let c=0;c<this.cols;c++){ const hp=this.grid[r][c]; if(hp<=0) continue; ctx.globalAlpha=hp===2?1:0.55; ctx.fillStyle='#7bffb9'; ctx.fillRect(c*this.cell, r*this.cell, this.cell-1, this.cell-1);} ctx.globalAlpha=1; ctx.restore(); }
+    class Shield{ 
+      constructor(x,y){ 
+        this.x=x; this.y=y; this.cell=8; this.cols=12; this.rows=6; 
+        // Create inverted U shape - hollow in the middle bottom
+        this.grid=Array.from({length:this.rows},()=>Array(this.cols).fill(0));
+        
+        // Build inverted U shape
+        for(let r=0; r<this.rows; r++){
+          for(let c=0; c<this.cols; c++){
+            // Top part - full width
+            if(r < 2) {
+              this.grid[r][c] = 1; // Less HP for easier destruction
+            }
+            // Middle part - sides only
+            else if(r < 4) {
+              if(c < 3 || c > 8) {
+                this.grid[r][c] = 1;
+              }
+            }
+            // Bottom part - just the edges
+            else {
+              if(c < 2 || c > 9) {
+                this.grid[r][c] = 1;
+              }
+            }
+          }
+        }
+      }
+      
+      hit(px,py){ 
+        const lx = Math.floor((px - (this.x - this.cols*this.cell/2))/this.cell); 
+        const ly = Math.floor((py - (this.y - this.rows*this.cell/2))/this.cell); 
+        if(lx<0||ly<0||lx>=this.cols||ly>=this.rows) return false; 
+        if(this.grid[ly][lx]>0){ 
+          this.grid[ly][lx]--; 
+          return true; 
+        } 
+        return false; 
+      }
+      
+      draw(){ 
+        ctx.save(); 
+        ctx.translate(this.x - this.cols*this.cell/2, this.y - this.rows*this.cell/2); 
+        for(let r=0;r<this.rows;r++) {
+          for(let c=0;c<this.cols;c++){ 
+            const hp=this.grid[r][c]; 
+            if(hp<=0) continue; 
+            ctx.globalAlpha = hp===1 ? 1 : 0.7; // Only 1 HP now
+            ctx.fillStyle='#7bffb9'; 
+            ctx.fillRect(c*this.cell, r*this.cell, this.cell-1, this.cell-1);
+          }
+        } 
+        ctx.globalAlpha=1; 
+        ctx.restore(); 
+      }
     }
 
-    class UFO{ constructor(){ this.w=50; this.h=22; this.y=72; this.x = Math.random()<0.5? -60 : W+60; this.vx = this.x<0? rand(110,160) : -rand(110,160); this.alive=true; this.points= choice([50,100,150,300]); }
-      update(dt){ this.x += this.vx*dt; if(this.x<-100||this.x>W+100) this.alive=false; }
-      draw(){ if(!this.alive) return; ctx.save(); ctx.translate(this.x, this.y); ctx.fillStyle='#ff6d7a'; ctx.fillRect(-24,-6,48,12); ctx.fillRect(-16,-10,32,8); ctx.fillStyle='#ffd1d6'; ctx.fillRect(-6,-14,12,6); ctx.restore(); }
+    class UFO{ 
+      constructor(){ 
+        this.w=50; this.h=22; this.y=72; 
+        this.x = Math.random()<0.5? -60 : W+60; 
+        this.vx = this.x<0? rand(110,160) : -rand(110,160); 
+        this.alive=true; 
+        this.points= choice([50,100,150,300]); 
+        this.tremoloTimer = 0;
+        this.tremoloPlaying = false;
+      }
+      
+      update(dt){ 
+        this.x += this.vx*dt; 
+        
+        // Play tremolo sound while UFO is on screen
+        if(this.x > -50 && this.x < W+50 && !this.tremoloPlaying) {
+          this.playTremolo();
+          this.tremoloPlaying = true;
+        }
+        
+        if(this.x<-100||this.x>W+100) {
+          this.alive=false;
+          this.stopTremolo();
+        }
+      }
+      
+      playTremolo(){
+        if(muted || audio.state !== 'running') return;
+        
+        const playTremoloNote = () => {
+          if(!this.alive || this.x < -60 || this.x > W+60) return;
+          
+          try {
+            beep('sine', 1200 + Math.sin(Date.now() * 0.01) * 200, .06, .008);
+            setTimeout(playTremoloNote, 100);
+          } catch(e) {
+            console.warn('UFO tremolo error:', e);
+          }
+        };
+        
+        playTremoloNote();
+      }
+      
+      stopTremolo(){
+        // Tremolo stops automatically when UFO goes off screen
+      }
+      
+      draw(){ 
+        if(!this.alive) return; 
+        ctx.save(); 
+        ctx.translate(this.x, this.y); 
+        ctx.fillStyle='#ff6d7a'; 
+        ctx.fillRect(-24,-6,48,12); 
+        ctx.fillRect(-16,-10,32,8); 
+        ctx.fillStyle='#ffd1d6'; 
+        ctx.fillRect(-6,-14,12,6); 
+        ctx.restore(); 
+      }
+      
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
     }
     
@@ -726,7 +834,26 @@
       }
     }
 
-    function togglePause(){ if(state==='playing'){ state='paused'; pausedScreen.classList.remove('hidden'); } else if(state==='paused'){ state='playing'; pausedScreen.classList.add('hidden'); } }
+    function togglePause(){ 
+      if(state==='playing'){ 
+        state='paused'; 
+        pausedScreen.classList.remove('hidden'); 
+        stopBGM(); // Stop music during pause
+      } else if(state==='paused'){ 
+        state='playing'; 
+        pausedScreen.classList.add('hidden'); 
+        // Resume BGM
+        setTimeout(() => {
+          if(state === 'playing') {
+            if(boss) {
+              playBGM('boss');
+            } else {
+              playBGM('normal');
+            }
+          }
+        }, 100);
+      } 
+    }
 
     function hideAllPanels(){ titleScreen.classList.add('hidden'); overScreen.classList.add('hidden'); pausedScreen.classList.add('hidden'); }
 
@@ -743,6 +870,7 @@
     let last=0;
     function loop(ts){
       const now=ts||0; const dt = Math.min(0.033,(now - last)/1000||0); last=now; 
+      // Update game logic only when playing or in transition
       if(state==='playing'||state==='transition') update(dt); 
       draw(); 
       requestAnimationFrame(loop);
@@ -817,8 +945,16 @@
 
       // UFO spawn (not during boss battles)
       if(!boss){
-        ufoTimer -= dt; if(ufoTimer<=0 && !ufo){ ufo = new UFO(); beep('sawtooth', 520, .08, .018); ufoTimer = rand(16, 28); }
-        if(ufo){ ufo.update(dt); if(!ufo.alive) ufo=null; }
+        ufoTimer -= dt; 
+        if(ufoTimer<=0 && !ufo){ 
+          ufo = new UFO(); 
+          // UFO now plays tremolo sound automatically
+          ufoTimer = rand(16, 28); 
+        }
+        if(ufo){ 
+          ufo.update(dt); 
+          if(!ufo.alive) ufo=null; 
+        }
       }
 
       // Bullets
@@ -911,22 +1047,41 @@
           sessionStats.powerUpsCollected++;
           
           if(p.type === 'shield'){
-            // Repair shields
+            // Repair shields back to original U shape
             for(const sh of shields){
               for(let r = 0; r < sh.rows; r++){
                 for(let c = 0; c < sh.cols; c++){
-                  if(sh.grid[r][c] < 2) sh.grid[r][c] = 2;
+                  let shouldHaveBlock = false;
+                  
+                  // Recreate U shape logic
+                  if(r < 2) {
+                    shouldHaveBlock = true;
+                  } else if(r < 4) {
+                    if(c < 3 || c > 8) shouldHaveBlock = true;
+                  } else {
+                    if(c < 2 || c > 9) shouldHaveBlock = true;
+                  }
+                  
+                  if(shouldHaveBlock && sh.grid[r][c] === 0) {
+                    sh.grid[r][c] = 1; // Restore blocks
+                  }
                 }
               }
             }
             floatingTexts.push(new FloatingText('SHIELDS REPAIRED!', player.x, player.y - 40));
-            beep('sawtooth', 1000, .1, .03);
+            // Special power-up sound - ascending notes
+            beep('sawtooth', 600, .08, .03);
+            setTimeout(() => beep('sawtooth', 800, .08, .03), 80);
+            setTimeout(() => beep('sawtooth', 1000, .08, .03), 160);
           } else {
             player.powerUp = p.type;
             player.powerUpTime = 8; // 8 seconds duration
             const text = p.type === 'rapid' ? 'RAPID FIRE!' : 'MULTI-SHOT!';
             floatingTexts.push(new FloatingText(text, player.x, player.y - 40));
-            beep('sawtooth', 1200, .1, .03);
+            // Power-up acquired sound - ascending notes
+            beep('square', 400, .06, .025);
+            setTimeout(() => beep('square', 600, .06, .025), 60);
+            setTimeout(() => beep('square', 800, .08, .03), 120);
           }
           
           checkAllAchievements();
