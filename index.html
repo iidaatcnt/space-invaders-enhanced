@@ -263,23 +263,30 @@
       
       let noteIndex = 0;
       const playNote = () => {
-        if(!bgMusicPlaying) return;
+        if(!bgMusicPlaying || state === 'gameover' || state === 'title') return;
         
-        const freq = melody[noteIndex % melody.length];
-        const osc = audio.createOscillator();
-        const gain = audio.createGain();
-        
-        osc.type = 'square';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.003, audio.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.4);
-        
-        osc.connect(gain).connect(audio.destination);
-        osc.start();
-        osc.stop(audio.currentTime + 0.4);
-        
-        noteIndex++;
-        currentBgMusic = setTimeout(playNote, 500);
+        try {
+          const freq = melody[noteIndex % melody.length];
+          const osc = audio.createOscillator();
+          const gain = audio.createGain();
+          
+          osc.type = 'square';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.003, audio.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.4);
+          
+          osc.connect(gain).connect(audio.destination);
+          osc.start();
+          osc.stop(audio.currentTime + 0.4);
+          
+          noteIndex++;
+          if(bgMusicPlaying) {
+            currentBgMusic = setTimeout(playNote, 500);
+          }
+        } catch(e) {
+          console.warn('BGM playback error:', e);
+          stopBGM();
+        }
       };
       
       playNote();
@@ -287,7 +294,10 @@
     
     function stopBGM(){
       bgMusicPlaying = false;
-      if(currentBgMusic) clearTimeout(currentBgMusic);
+      if(currentBgMusic) {
+        clearTimeout(currentBgMusic);
+        currentBgMusic = null;
+      }
     }
     
     window.addEventListener('pointerdown', ()=>{ if(audio.state!=='running') audio.resume(); }, {once:true});
@@ -647,11 +657,31 @@
     }
 
     function startGame(){
+      // Clear any existing timeouts first
+      if(window.nextLevelTimeout) {
+        clearTimeout(window.nextLevelTimeout);
+        window.nextLevelTimeout = null;
+      }
+      
       state='playing'; score=0; level=1; lives=3; specialAvailable=true;
+      combo = 0; comboTimer = 0; // Reset combo
+      waveTransition = false; waveTransitionTimer = 0; // Reset transition
+      
+      // Reset session stats
+      sessionStats = {
+        enemiesKilled: 0,
+        maxCombo: 0,
+        bossesDefeated: 0,
+        powerUpsCollected: 0,
+        specialUsed: false
+      };
+      
       player = new Player(); setupLevel(); updateHUD(); hideAllPanels();
       if(audio.state!=='running') audio.resume();
       stopBGM();
-      setTimeout(() => playBGM('normal'), 500);
+      setTimeout(() => {
+        if(state === 'playing') playBGM('normal');
+      }, 500);
     }
 
     function nextLevel(){ 
@@ -664,26 +694,42 @@
       // Check for boss level (every 5 levels)
       isBossLevel = (level % 5 === 0);
       
-      setTimeout(() => {
+      // Clear any existing timeouts to prevent multiple calls
+      if(window.nextLevelTimeout) clearTimeout(window.nextLevelTimeout);
+      
+      window.nextLevelTimeout = setTimeout(() => {
+        // Additional safety check
+        if(state !== 'transition') return;
+        
         invSpeed += 6; 
         if(isBossLevel) {
           setupBossLevel();
           stopBGM();
-          setTimeout(() => playBGM('boss'), 500);
+          setTimeout(() => {
+            if(state === 'playing') playBGM('boss');
+          }, 500);
         } else {
           setupLevel();
           stopBGM();
-          setTimeout(() => playBGM('normal'), 500);
+          setTimeout(() => {
+            if(state === 'playing') playBGM('normal');
+          }, 500);
         }
         updateHUD();
         state = 'playing';
         waveTransition = false;
+        window.nextLevelTimeout = null;
       }, 2500);
     }
 
     function restart(){ 
       state='title'; hideAllPanels(); titleScreen.classList.remove('hidden'); 
       stopBGM();
+      // Clear any pending timeouts
+      if(window.nextLevelTimeout) {
+        clearTimeout(window.nextLevelTimeout);
+        window.nextLevelTimeout = null;
+      }
     }
 
     function gameOver(){
@@ -692,6 +738,11 @@
       document.getElementById('final-hiscore').textContent = String(hiscore);
       hideAllPanels(); overScreen.classList.remove('hidden');
       stopBGM();
+      // Clear any pending timeouts
+      if(window.nextLevelTimeout) {
+        clearTimeout(window.nextLevelTimeout);
+        window.nextLevelTimeout = null;
+      }
     }
 
     function togglePause(){ if(state==='playing'){ state='paused'; pausedScreen.classList.remove('hidden'); } else if(state==='paused'){ state='playing'; pausedScreen.classList.add('hidden'); } }
@@ -742,7 +793,7 @@
       // Boss update
       if(boss){
         boss.update(dt);
-        if(!boss.alive){
+        if(!boss.alive && state === 'playing'){
           beep('sawtooth',600,.12,.03);
           nextLevel();
           return;
@@ -750,7 +801,7 @@
       } else {
         // Invader marching
         const alive = invaders.filter(i=>i.alive);
-        if(alive.length===0){ beep('sawtooth',600,.12,.03); nextLevel(); return; }
+        if(alive.length===0 && state === 'playing'){ beep('sawtooth',600,.12,.03); nextLevel(); return; }
       }
 
       if(!boss){
