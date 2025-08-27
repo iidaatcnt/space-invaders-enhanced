@@ -206,13 +206,17 @@
     let canvasWidth, canvasHeight;
     
     function setupCanvas(){
+      // Always use standard game dimensions
+      canvas.width = 960;
+      canvas.height = 600;
+      
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const isMobileDevice = viewportWidth <= 768;
       
       if(isMobileDevice) {
-        // Mobile: Use full screen minus controls
-        const availableHeight = viewportHeight - 160; // Account for HUD and controls
+        // Mobile: CSS will handle scaling
+        const availableHeight = viewportHeight - 120; // Account for HUD and controls
         const availableWidth = viewportWidth;
         
         // Calculate scale to fit game area
@@ -220,33 +224,26 @@
         const scaleY = availableHeight / 600;
         gameScale = Math.min(scaleX, scaleY);
         
-        canvasWidth = 960 * gameScale;
-        canvasHeight = 600 * gameScale;
-        
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        canvas.style.width = canvasWidth + 'px';
-        canvas.style.height = canvasHeight + 'px';
+        // Set CSS size for proper scaling
+        canvas.style.width = (960 * gameScale) + 'px';
+        canvas.style.height = (600 * gameScale) + 'px';
         
         console.log('Mobile canvas setup:', { 
           viewport: { w: viewportWidth, h: viewportHeight },
-          available: { w: availableWidth, h: availableHeight },
-          scale: gameScale,
-          canvas: { w: canvasWidth, h: canvasHeight }
+          gameScale,
+          cssSize: { w: 960 * gameScale, h: 600 * gameScale }
         });
       } else {
         // Desktop: Standard scaling
         gameScale = 1;
-        canvasWidth = 960;
-        canvasHeight = 600;
-        canvas.width = 960;
-        canvas.height = 600;
         canvas.style.width = '100%';
         canvas.style.height = 'auto';
+        canvas.style.maxWidth = '960px';
+        canvas.style.maxHeight = '600px';
       }
       
-      // Apply scaling to context
-      ctx.setTransform(gameScale, 0, 0, gameScale, 0, 0);
+      // Reset context transform
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     
     // Setup canvas on load and resize
@@ -524,7 +521,7 @@
         if(this.y<-40||this.y>H+40||this.x<-40||this.x>W+40) this.dead=true; 
       }
       draw(){ 
-        const size = isMobile ? 1.5 : 1; // Larger bullets on mobile
+        const size = 1.5; // Always larger for better visibility
         const w = this.w * size;
         const h = this.h * size;
         
@@ -610,7 +607,7 @@
         }
         
         // Draw larger, more visible player ship
-        const size = isMobile ? 1.5 : 1; // 50% larger on mobile
+        const size = 1.5; // Always larger for better visibility
         
         // Main body - bright cyan
         ctx.fillStyle = '#00ffff';
