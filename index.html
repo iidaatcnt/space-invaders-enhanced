@@ -8,8 +8,21 @@
     :root { --bg:#0b0f1a; --fg:#f2f5ff; --accent:#42ff88; --muted:#8aa0ff; }
     html,body{height:100%;}
     body{margin:0; background:radial-gradient(1200px 600px at 50% -200px,#101426 0%, #0b0f1a 60%, #070a12 100%); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "メイリオ", Meiryo, "Apple Color Emoji", "Segoe UI Emoji";}
-    #wrap{position:relative; width:100vw; height:100vh; margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center;}
-    canvas{width:100%; max-width:960px; height:auto; max-height:calc(100vh - 140px); display:block; background:transparent; touch-action:none;}
+    #wrap{position:relative; width:100vw; height:100vh; margin:0; display:flex; flex-direction:column;}
+    canvas{display:block; background:transparent; touch-action:none;}
+    
+    /* Desktop layout */
+    @media (min-width: 769px) {
+      #wrap{justify-content:center; align-items:center;}
+      canvas{width:100%; max-width:960px; height:auto; max-height:calc(100vh - 140px);}
+    }
+    
+    /* Mobile and tablet layout */
+    @media (max-width: 768px) {
+      #wrap{padding:0;}
+      canvas{width:100vw; height:calc(100vh - 160px); object-fit:contain;}
+      .hud .row{padding:5px 8px; font-size:14px;}
+    }
     .hud{position:absolute; inset:0; pointer-events:none;}
     .row{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; font-weight:700; letter-spacing:.02em; text-shadow:0 2px 12px rgba(0,0,0,.45)}
     .score, .lives, .level{font-variant-numeric:tabular-nums;}
@@ -28,16 +41,77 @@
       .desktop-only{display:none}
     }
     
-    /* Mobile controls - Always visible on touch devices */
-    .mobile-controls{display:none; position:fixed; bottom:10px; left:0; right:0; height:140px; pointer-events:auto; user-select:none; -webkit-user-select:none; z-index:100;}
-    @media (pointer:coarse), (max-width:768px){
-      .mobile-controls{display:grid; grid-template-columns:1fr 2fr 1fr; gap:10px; padding:0 10px; align-items:center;}
-      .control-group{display:flex; gap:8px; justify-content:center;}
-      .mobile-btn{width:70px; height:70px; border-radius:15px; background:rgba(255,255,255,0.15); border:2px solid rgba(255,255,255,0.3); display:grid; place-items:center; font-size:28px; color:var(--fg); touch-action:none; transition:all 0.1s;}
-      .mobile-btn:active{background:rgba(255,255,255,0.25); transform:scale(0.92); box-shadow:0 0 20px rgba(255,255,255,0.3);}
-      .mobile-fire{width:100px; height:100px; background:linear-gradient(135deg, rgba(66,255,136,0.3), rgba(66,255,136,0.15)); border-color:var(--accent); font-size:40px;}
-      .mobile-special{width:60px; height:60px; background:linear-gradient(135deg, rgba(255,66,66,0.3), rgba(255,66,66,0.15)); border-color:#ff4444; font-size:20px;}
-      .mobile-pause{width:50px; height:50px; font-size:20px;}
+    /* Mobile controls - Responsive design */
+    .mobile-controls{display:none; position:fixed; bottom:0; left:0; right:0; pointer-events:auto; user-select:none; -webkit-user-select:none; z-index:100; background:linear-gradient(to top, rgba(11,15,26,0.9), transparent); padding:10px;}
+    
+    @media (max-width: 768px) {
+      .mobile-controls{
+        display:grid; 
+        grid-template-columns:1fr 1fr 1fr; 
+        gap:8px; 
+        height:120px; 
+        align-items:center;
+        padding:10px;
+      }
+      
+      .control-group{
+        display:flex; 
+        gap:4px; 
+        justify-content:center;
+        align-items:center;
+      }
+      
+      .mobile-btn{
+        width:60px; 
+        height:60px; 
+        border-radius:12px; 
+        background:rgba(255,255,255,0.2); 
+        border:2px solid rgba(255,255,255,0.4); 
+        display:grid; 
+        place-items:center; 
+        font-size:24px; 
+        color:var(--fg); 
+        touch-action:none; 
+        transition:all 0.15s;
+        box-shadow:0 2px 8px rgba(0,0,0,0.3);
+      }
+      
+      .mobile-btn:active{
+        background:rgba(255,255,255,0.4); 
+        transform:scale(0.9); 
+        box-shadow:0 0 15px rgba(255,255,255,0.4);
+      }
+      
+      .mobile-fire{
+        width:80px; 
+        height:80px; 
+        background:linear-gradient(135deg, rgba(66,255,136,0.4), rgba(66,255,136,0.2)); 
+        border-color:var(--accent); 
+        font-size:32px;
+        box-shadow:0 4px 12px rgba(66,255,136,0.3);
+      }
+      
+      .mobile-special{
+        width:50px; 
+        height:50px; 
+        background:linear-gradient(135deg, rgba(255,66,66,0.4), rgba(255,66,66,0.2)); 
+        border-color:#ff4444; 
+        font-size:18px;
+      }
+      
+      .mobile-pause{
+        width:45px; 
+        height:45px; 
+        font-size:16px;
+      }
+    }
+    
+    /* Tablet controls */
+    @media (min-width: 481px) and (max-width: 768px) {
+      .mobile-btn{width:80px; height:80px; font-size:28px;}
+      .mobile-fire{width:100px; height:100px; font-size:36px;}
+      .mobile-special{width:65px; height:65px; font-size:22px;}
+      .mobile-pause{width:60px; height:60px; font-size:20px;}
     }
   </style>
 </head>
@@ -125,34 +199,60 @@
     const rand=(a,b)=>Math.random()*(b-a)+a;
     const choice=arr=>arr[(Math.random()*arr.length)|0];
 
-    // Simplified canvas scaling for mobile
+    // Responsive canvas system
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
+    let gameScale = 1;
+    let canvasWidth, canvasHeight;
     
-    function resizeCanvas(){
-      const container = canvas.parentElement;
-      const containerRect = container.getBoundingClientRect();
+    function setupCanvas(){
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const isMobileDevice = viewportWidth <= 768;
       
-      // Set canvas size to match container
-      canvas.width = 960;
-      canvas.height = 600;
+      if(isMobileDevice) {
+        // Mobile: Use full screen minus controls
+        const availableHeight = viewportHeight - 160; // Account for HUD and controls
+        const availableWidth = viewportWidth;
+        
+        // Calculate scale to fit game area
+        const scaleX = availableWidth / 960;
+        const scaleY = availableHeight / 600;
+        gameScale = Math.min(scaleX, scaleY);
+        
+        canvasWidth = 960 * gameScale;
+        canvasHeight = 600 * gameScale;
+        
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        canvas.style.width = canvasWidth + 'px';
+        canvas.style.height = canvasHeight + 'px';
+        
+        console.log('Mobile canvas setup:', { 
+          viewport: { w: viewportWidth, h: viewportHeight },
+          available: { w: availableWidth, h: availableHeight },
+          scale: gameScale,
+          canvas: { w: canvasWidth, h: canvasHeight }
+        });
+      } else {
+        // Desktop: Standard scaling
+        gameScale = 1;
+        canvasWidth = 960;
+        canvasHeight = 600;
+        canvas.width = 960;
+        canvas.height = 600;
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+      }
       
-      // Scale context to fit the CSS size
-      const scaleX = containerRect.width / 960;
-      const scaleY = containerRect.height / 600;
-      const scale = Math.min(scaleX, scaleY);
-      
-      console.log('Canvas resize:', { 
-        containerSize: { w: containerRect.width, h: containerRect.height },
-        canvasSize: { w: canvas.width, h: canvas.height },
-        scale 
-      });
+      // Apply scaling to context
+      ctx.setTransform(gameScale, 0, 0, gameScale, 0, 0);
     }
     
-    // Resize on load and window resize
-    window.addEventListener('resize', resizeCanvas);
-    window.addEventListener('load', resizeCanvas);
-    resizeCanvas();
+    // Setup canvas on load and resize
+    window.addEventListener('resize', setupCanvas);
+    window.addEventListener('orientationchange', setupCanvas);
+    setupCanvas();
 
     // ===== Game State =====
     const W=960, H=600;
@@ -423,7 +523,20 @@
         this.y += this.vy*dt; 
         if(this.y<-40||this.y>H+40||this.x<-40||this.x>W+40) this.dead=true; 
       }
-      draw(){ ctx.fillStyle = this.from==='player'? '#42ff88' : '#ff8a8a'; ctx.fillRect(this.x-this.w/2, this.y-this.h/2, this.w, this.h); }
+      draw(){ 
+        const size = isMobile ? 1.5 : 1; // Larger bullets on mobile
+        const w = this.w * size;
+        const h = this.h * size;
+        
+        ctx.fillStyle = this.from==='player'? '#42ff88' : '#ff8a8a'; 
+        ctx.fillRect(this.x-w/2, this.y-h/2, w, h);
+        
+        // Add glow effect for better visibility
+        ctx.shadowBlur = 5 * size;
+        ctx.shadowColor = this.from==='player'? '#42ff88' : '#ff8a8a';
+        ctx.fillRect(this.x-w/2, this.y-h/2, w, h);
+        ctx.shadowBlur = 0;
+      }
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
     }
 
@@ -496,18 +609,35 @@
           ctx.restore();
         }
         
-        // Draw player ship with bright colors for visibility
-        ctx.fillStyle = '#00ffff';
-        ctx.fillRect(-20, 6, 40, 6);   // Bottom part
-        ctx.fillRect(-12, 0, 24, 8);   // Middle part  
-        ctx.fillRect(-4, -8, 8, 16);   // Top part
+        // Draw larger, more visible player ship
+        const size = isMobile ? 1.5 : 1; // 50% larger on mobile
         
-        // Add outline for better visibility
+        // Main body - bright cyan
+        ctx.fillStyle = '#00ffff';
+        ctx.fillRect(-25*size, 8*size, 50*size, 8*size);   // Bottom part (wider)
+        ctx.fillRect(-15*size, 0*size, 30*size, 10*size);  // Middle part  
+        ctx.fillRect(-6*size, -10*size, 12*size, 20*size); // Top part (taller)
+        
+        // Bright white outline for maximum visibility
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-20, 6, 40, 6);
-        ctx.strokeRect(-12, 0, 24, 8);
-        ctx.strokeRect(-4, -8, 8, 16);
+        ctx.lineWidth = 2*size;
+        ctx.strokeRect(-25*size, 8*size, 50*size, 8*size);
+        ctx.strokeRect(-15*size, 0*size, 30*size, 10*size);
+        ctx.strokeRect(-6*size, -10*size, 12*size, 20*size);
+        
+        // Add bright accent lines
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 1*size;
+        ctx.beginPath();
+        ctx.moveTo(-20*size, 12*size);
+        ctx.lineTo(20*size, 12*size);
+        ctx.stroke();
+        
+        // Position indicator dot
+        ctx.fillStyle = '#ff00ff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 3*size, 0, Math.PI * 2);
+        ctx.fill();
         
         ctx.restore();
       }
