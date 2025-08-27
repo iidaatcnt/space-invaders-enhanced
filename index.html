@@ -9,7 +9,7 @@
     html,body{height:100%;}
     body{margin:0; background:radial-gradient(1200px 600px at 50% -200px,#101426 0%, #0b0f1a 60%, #070a12 100%); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "メイリオ", Meiryo, "Apple Color Emoji", "Segoe UI Emoji";}
     #wrap{position:relative; width:min(100vw, 960px); margin:0 auto;}
-    canvas{width:100%; height:auto; display:block; background:transparent;}
+    canvas{width:100%; height:auto; display:block; background:transparent; touch-action:none;}
     .hud{position:absolute; inset:0; pointer-events:none;}
     .row{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 12px; font-weight:700; letter-spacing:.02em; text-shadow:0 2px 12px rgba(0,0,0,.45)}
     .score, .lives, .level{font-variant-numeric:tabular-nums;}
@@ -22,6 +22,15 @@
     .btn{pointer-events:auto; cursor:pointer; margin-top:.6rem; display:inline-block; background:linear-gradient(180deg,#2ef29f,#19ce85); color:#02120a; font-weight:800; border:none; padding:.6rem 1rem; border-radius:12px; box-shadow:0 10px 30px rgba(23, 232, 142, .45);}
     .tiny{font-size:12px; opacity:.85}
     .hidden{display:none}
+    
+    /* Mobile controls */
+    .mobile-controls{display:none; position:fixed; bottom:0; left:0; right:0; height:120px; pointer-events:auto; user-select:none; -webkit-user-select:none;}
+    @media (max-width:768px), (pointer:coarse){
+      .mobile-controls{display:flex; justify-content:space-between; align-items:center; padding:0 20px; background:linear-gradient(to top, rgba(11,15,26,0.9), transparent);}
+      .mobile-btn{width:60px; height:60px; border-radius:50%; background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.2); display:grid; place-items:center; font-size:24px; color:var(--fg); touch-action:none;}
+      .mobile-btn:active{background:rgba(255,255,255,0.2); transform:scale(0.95);}
+      .mobile-fire{width:80px; height:80px; background:rgba(66,255,136,0.2); border-color:var(--accent);}
+    }
   </style>
 </head>
 <body>
@@ -54,6 +63,12 @@
         </div>
       </div>
     </div>
+    <!-- Mobile controls -->
+    <div class="mobile-controls">
+      <button class="mobile-btn" id="mobile-left">◀</button>
+      <button class="mobile-btn mobile-fire" id="mobile-fire">🔥</button>
+      <button class="mobile-btn" id="mobile-right">▶</button>
+    </div>
   </div>
 
   <script>
@@ -84,6 +99,8 @@
     let state='title';
     let score=0, hiscore= Number(localStorage.getItem('inv_hi')||0), level=1, lives=3;
     let specialAvailable = true; // 1ゲームに1回
+    let combo = 0;
+    let comboTimer = 0;
 
     // HUD hooks
     const $ = sel => document.querySelector(sel);
@@ -114,6 +131,42 @@
     const up = e=>{ keys.delete(e.code); };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    
+    // Mobile controls
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                     ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    
+    if(isMobile || window.innerWidth <= 768){
+      const mobileLeft = document.getElementById('mobile-left');
+      const mobileRight = document.getElementById('mobile-right');
+      const mobileFire = document.getElementById('mobile-fire');
+      
+      // Touch controls
+      const handleTouch = (el, code) => {
+        el.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          keys.add(code);
+        });
+        el.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          keys.delete(code);
+        });
+      };
+      
+      handleTouch(mobileLeft, 'ArrowLeft');
+      handleTouch(mobileRight, 'ArrowRight');
+      handleTouch(mobileFire, 'Space');
+      
+      // Double tap for special attack
+      let lastTap = 0;
+      mobileFire.addEventListener('touchstart', (e) => {
+        const now = Date.now();
+        if(now - lastTap < 300){
+          useSpecial();
+        }
+        lastTap = now;
+      });
+    }
 
     // ===== Audio =====
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -141,7 +194,11 @@
     }
 
     class Player{
-      constructor(){ this.x=W/2; this.y=H-60; this.w=40; this.h=22; this.speed=320; this.cool=0; }
+      constructor(){ 
+        this.x=W/2; this.y=H-60; this.w=40; this.h=22; this.speed=320; this.cool=0; 
+        this.powerUp = null;
+        this.powerUpTime = 0;
+      }
       update(dt){
         const left = keys.has('ArrowLeft')||keys.has('KeyA');
         const right = keys.has('ArrowRight')||keys.has('KeyD');
@@ -149,14 +206,48 @@
         this.x += ax * this.speed * dt;
         this.x = clamp(this.x, 24, W-24);
         this.cool -= dt;
-        if(keys.has('Space') && this.cool<=0 && bullets.filter(b=>b.from==='player').length<2){
-          bullets.push(new Bullet(this.x, this.y-18, -480, 'player'));
-          this.cool = 0.12;
+        
+        // Power-up timer
+        if(this.powerUp && this.powerUpTime > 0){
+          this.powerUpTime -= dt;
+          if(this.powerUpTime <= 0){
+            this.powerUp = null;
+            floatingTexts.push(new FloatingText('Power-up expired', this.x, this.y - 40));
+          }
+        }
+        
+        // Shooting with power-ups
+        const maxBullets = this.powerUp === 'rapid' ? 5 : 2;
+        const cooldown = this.powerUp === 'rapid' ? 0.06 : 0.12;
+        
+        if(keys.has('Space') && this.cool<=0 && bullets.filter(b=>b.from==='player').length<maxBullets){
+          if(this.powerUp === 'multi'){
+            // Triple shot
+            bullets.push(new Bullet(this.x, this.y-18, -480, 'player'));
+            bullets.push(new Bullet(this.x-12, this.y-18, -480, 'player'));
+            bullets.push(new Bullet(this.x+12, this.y-18, -480, 'player'));
+          } else {
+            bullets.push(new Bullet(this.x, this.y-18, -480, 'player'));
+          }
+          this.cool = cooldown;
           beep('square', 880, .06, .02);
         }
       }
       draw(){
         ctx.save(); ctx.translate(this.x, this.y);
+        
+        // Power-up aura
+        if(this.powerUp){
+          ctx.save();
+          const auraColor = this.powerUp === 'rapid' ? '#ff9d42' : 
+                           this.powerUp === 'multi' ? '#42c3ff' : '#42ff88';
+          ctx.strokeStyle = auraColor;
+          ctx.lineWidth = 2;
+          ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.005) * 0.3;
+          ctx.strokeRect(-24, -12, 48, 26);
+          ctx.restore();
+        }
+        
         ctx.fillStyle = '#c7f7ff';
         ctx.fillRect(-20, 6, 40, 6);
         ctx.fillRect(-12, 0, 24, 8);
@@ -201,8 +292,67 @@
       rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
     }
 
+    // Power-up class
+    class PowerUp{
+      constructor(x, y, type){
+        this.x = x;
+        this.y = y;
+        this.w = 24;
+        this.h = 24;
+        this.type = type; // 'rapid', 'multi', 'shield'
+        this.vy = 60;
+        this.dead = false;
+        this.pulse = 0;
+      }
+      update(dt){
+        this.y += this.vy * dt;
+        this.pulse += dt * 5;
+        if(this.y > H + 30) this.dead = true;
+      }
+      draw(){
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        const scale = 1 + Math.sin(this.pulse) * 0.1;
+        ctx.scale(scale, scale);
+        
+        // Draw power-up icon based on type
+        if(this.type === 'rapid'){
+          ctx.fillStyle = '#ff9d42';
+          ctx.fillRect(-10, -4, 4, 8);
+          ctx.fillRect(-2, -4, 4, 8);
+          ctx.fillRect(6, -4, 4, 8);
+        } else if(this.type === 'multi'){
+          ctx.fillStyle = '#42c3ff';
+          ctx.fillRect(-8, -8, 3, 16);
+          ctx.fillRect(-1.5, -8, 3, 16);
+          ctx.fillRect(5, -8, 3, 16);
+        } else if(this.type === 'shield'){
+          ctx.fillStyle = '#42ff88';
+          ctx.beginPath();
+          ctx.moveTo(0, -10);
+          ctx.lineTo(-10, -3);
+          ctx.lineTo(-10, 6);
+          ctx.lineTo(0, 10);
+          ctx.lineTo(10, 6);
+          ctx.lineTo(10, -3);
+          ctx.closePath();
+          ctx.fill();
+        }
+        
+        // Glow effect
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.fill();
+        
+        ctx.restore();
+      }
+      rect(){ return {x:this.x-this.w/2, y:this.y-this.h/2, w:this.w, h:this.h}; }
+    }
+
     // ===== World containers =====
     let player; let invaders=[]; let bullets=[]; let enemyBullets=[]; let shields=[]; let ufo=null; let invDir=1; let invSpeed=32; let invStepDown=18; let fireTimer=0; let ufoTimer=rand(12,24);
+    let powerUps = [];
+    let powerUpTimer = rand(8, 15);
 
     function setupLevel(){
       invaders.length=0; bullets.length=0; enemyBullets.length=0; ufo=null;
@@ -252,6 +402,26 @@
 
     function update(dt){
       player.update(dt);
+      
+      // Combo timer
+      if(comboTimer > 0){
+        comboTimer -= dt;
+        if(comboTimer <= 0){
+          combo = 0;
+        }
+      }
+      
+      // Power-up spawning
+      powerUpTimer -= dt;
+      if(powerUpTimer <= 0 && Math.random() < 0.4){
+        const types = ['rapid', 'multi', 'shield'];
+        const type = choice(types);
+        powerUps.push(new PowerUp(rand(50, W-50), -30, type));
+        powerUpTimer = rand(10, 20);
+      }
+      
+      // Update power-ups
+      for(const p of powerUps) p.update(dt);
 
       // Invader marching
       const alive = invaders.filter(i=>i.alive);
@@ -283,10 +453,43 @@
 
       // Player bullets vs invaders/UFO/shields
       for(const b of bullets){ if(b.dead) continue; const br=b.rect();
-        for(const inv of invaders){ if(!inv.alive) continue; if(overlap(br, inv.rect())){ inv.alive=false; b.dead=true; score+=inv.value; updateHUD(); beep('square', 300, .06, .02); break; } }
+        for(const inv of invaders){ if(!inv.alive) continue; if(overlap(br, inv.rect())){ 
+          inv.alive=false; b.dead=true; 
+          
+          // Combo system
+          combo++;
+          comboTimer = 1.5; // 1.5 seconds to maintain combo
+          const comboMultiplier = Math.min(combo, 10);
+          const points = inv.value * comboMultiplier;
+          score += points;
+          updateHUD();
+          
+          // Show combo feedback
+          if(combo > 1){
+            const comboText = combo >= 10 ? `MAX COMBO x${comboMultiplier}!` : `x${comboMultiplier} COMBO`;
+            floatingTexts.push(new FloatingText(comboText, inv.x, inv.y - 20));
+            floatingTexts.push(new FloatingText(`+${points}`, inv.x, inv.y));
+            const pitch = 300 + combo * 50;
+            beep('square', Math.min(pitch, 800), .06, .02);
+          } else {
+            beep('square', 300, .06, .02);
+          }
+          
+          // Create explosion for invader
+          const colors = ['#8aa0ff','#8aa0ff','#66e6ff','#66e6ff','#98ffcc'];
+          createExplosion(inv.x, inv.y, colors[inv.row] || '#98ffcc', 15 + combo);
+          break; 
+        }}
         if(!b.dead){ for(const sh of shields){ if(sh.hit(b.x, b.y)){ b.dead=true; break; } } }
-        if(!b.dead && ufo){ if(overlap(br, ufo.rect())){ score+=ufo.points; updateHUD(); floatingTexts.push(new FloatingText(`+${ufo.points}`, ufo.x, ufo.y-10)); ufo.alive=false; b.dead=true; beep('square', 900, .09, .03); }
-        }
+        if(!b.dead && ufo){ if(overlap(br, ufo.rect())){ 
+          combo = 0; // UFO resets combo but gives big points
+          score+=ufo.points; updateHUD(); 
+          floatingTexts.push(new FloatingText(`+${ufo.points}`, ufo.x, ufo.y-10)); 
+          ufo.alive=false; b.dead=true; 
+          beep('square', 900, .09, .03);
+          // Create bigger explosion for UFO
+          createExplosion(ufo.x, ufo.y, '#ff6d7a', 25);
+        }}
       }
 
       // Enemy bullets vs player/shields
@@ -296,8 +499,36 @@
         if(overlap(br, player.rect())){ b.dead=true; lives--; updateHUD(); beep('triangle',120,.12,.02); screenFlash(); if(lives<=0) return gameOver(); player.x=W/2; enemyBullets = enemyBullets.filter(bb=>bb.y < player.y-40); }
       }
 
+      // Player vs power-ups
+      for(const p of powerUps){
+        if(p.dead) continue;
+        if(overlap(p.rect(), player.rect())){
+          p.dead = true;
+          
+          if(p.type === 'shield'){
+            // Repair shields
+            for(const sh of shields){
+              for(let r = 0; r < sh.rows; r++){
+                for(let c = 0; c < sh.cols; c++){
+                  if(sh.grid[r][c] < 2) sh.grid[r][c] = 2;
+                }
+              }
+            }
+            floatingTexts.push(new FloatingText('SHIELDS REPAIRED!', player.x, player.y - 40));
+            beep('sawtooth', 1000, .1, .03);
+          } else {
+            player.powerUp = p.type;
+            player.powerUpTime = 8; // 8 seconds duration
+            const text = p.type === 'rapid' ? 'RAPID FIRE!' : 'MULTI-SHOT!';
+            floatingTexts.push(new FloatingText(text, player.x, player.y - 40));
+            beep('sawtooth', 1200, .1, .03);
+          }
+        }
+      }
+      
       bullets = bullets.filter(b=>!b.dead);
       enemyBullets = enemyBullets.filter(b=>!b.dead);
+      powerUps = powerUps.filter(p=>!p.dead);
 
       // Lose when invaders reach player line（プレーヤー位置付近）
       if(maxY >= player.y - 10){ gameOver(); }
@@ -305,6 +536,10 @@
       // Floating texts
       for(const ft of floatingTexts) ft.update(dt);
       floatingTexts = floatingTexts.filter(t=>!t.dead);
+      
+      // Particles
+      for(const p of particles) p.update(dt);
+      particles = particles.filter(p => p.life > 0);
     }
 
     // Simple flash on damage
@@ -317,15 +552,59 @@
     }
     let floatingTexts=[];
 
+    // Particle system for explosions
+    class Particle{
+      constructor(x, y, color){
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 280;
+        this.vy = (Math.random() - 0.5) * 280;
+        this.life = 1;
+        this.color = color;
+        this.size = Math.random() * 4 + 2;
+      }
+      update(dt){
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.vx *= 0.98;
+        this.vy *= 0.98;
+        this.life -= dt * 2;
+        if(this.life <= 0) this.life = 0;
+      }
+      draw(){
+        if(this.life <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        const size = this.size * this.life;
+        ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
+        // Glow effect
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.fillRect(this.x - size/4, this.y - size/4, size/2, size/2);
+        ctx.restore();
+      }
+    }
+    
+    let particles = [];
+    
+    function createExplosion(x, y, color, count = 12){
+      for(let i = 0; i < count; i++){
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
     function draw(){
       ctx.clearRect(0,0,W,H);
       drawStars();
       for(const sh of shields) sh.draw();
+      for(const p of powerUps) p.draw();
       if(player) player.draw();
       for(const i of invaders) i.draw();
       for(const b of bullets) b.draw();
       for(const b of enemyBullets) b.draw();
       if(ufo) ufo.draw();
+      for(const p of particles) p.draw();
       for(const ft of floatingTexts) ft.draw();
       if(flashT>0){ ctx.fillStyle='rgba(255,255,255,'+flashT.toFixed(2)+')'; ctx.fillRect(0,0,W,H); flashT-=0.016; }
     }
