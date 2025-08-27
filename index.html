@@ -58,8 +58,10 @@
           <button id="btn-restart" class="btn">もう一度（R）</button>
         </div>
         <div id="screen-paused" class="panel hidden">
-          <h1>PAUSED</h1>
-          <p>再開は <span class="kbd">P</span></p>
+          <h1>一時停止中</h1>
+          <p style="font-size: 18px; margin: 15px 0;">ゲームが一時停止されています</p>
+          <p>再開するには <span class="kbd">P</span> キーを押してください</p>
+          <p class="tiny" style="margin-top: 20px;">または <span class="kbd">ESC</span> でタイトルに戻る</p>
         </div>
       </div>
     </div>
@@ -185,6 +187,16 @@
       if(state==='title' && (e.code==='Enter' || e.code==='Space')) startGame();
       if(e.code==='KeyP') togglePause();
       if(e.code==='KeyR') restart();
+      if(e.code==='Escape' && state==='paused') {
+        state='title'; 
+        hideAllPanels(); 
+        titleScreen.classList.remove('hidden');
+        stopBGM();
+        if(window.nextLevelTimeout) {
+          clearTimeout(window.nextLevelTimeout);
+          window.nextLevelTimeout = null;
+        }
+      }
     };
     const up = e=>{ keys.delete(e.code); };
     window.addEventListener('keydown', down);
@@ -500,7 +512,7 @@
         this.vx = this.x<0? rand(110,160) : -rand(110,160); 
         this.alive=true; 
         this.points= choice([50,100,150,300]); 
-        this.tremoloTimer = 0;
+        this.tremoloTimer = null;
         this.tremoloPlaying = false;
       }
       
@@ -513,6 +525,12 @@
           this.tremoloPlaying = true;
         }
         
+        // Stop tremolo when UFO leaves screen
+        if((this.x < -60 || this.x > W+60) && this.tremoloPlaying) {
+          this.stopTremolo();
+          this.tremoloPlaying = false;
+        }
+        
         if(this.x<-100||this.x>W+100) {
           this.alive=false;
           this.stopTremolo();
@@ -520,14 +538,17 @@
       }
       
       playTremolo(){
-        if(muted || audio.state !== 'running') return;
+        if(muted || audio.state !== 'running' || state === 'paused') return;
         
         const playTremoloNote = () => {
-          if(!this.alive || this.x < -60 || this.x > W+60) return;
+          if(!this.alive || this.x < -60 || this.x > W+60 || !this.tremoloPlaying || state === 'paused') {
+            this.stopTremolo();
+            return;
+          }
           
           try {
             beep('sine', 1200 + Math.sin(Date.now() * 0.01) * 200, .06, .008);
-            setTimeout(playTremoloNote, 100);
+            this.tremoloTimer = setTimeout(playTremoloNote, 100);
           } catch(e) {
             console.warn('UFO tremolo error:', e);
           }
@@ -537,7 +558,11 @@
       }
       
       stopTremolo(){
-        // Tremolo stops automatically when UFO goes off screen
+        if(this.tremoloTimer) {
+          clearTimeout(this.tremoloTimer);
+          this.tremoloTimer = null;
+        }
+        this.tremoloPlaying = false;
       }
       
       draw(){ 
@@ -839,6 +864,10 @@
         state='paused'; 
         pausedScreen.classList.remove('hidden'); 
         stopBGM(); // Stop music during pause
+        // Stop UFO tremolo if playing
+        if(ufo && ufo.tremoloPlaying) {
+          ufo.stopTremolo();
+        }
       } else if(state==='paused'){ 
         state='playing'; 
         pausedScreen.classList.add('hidden'); 
@@ -849,6 +878,12 @@
               playBGM('boss');
             } else {
               playBGM('normal');
+            }
+            // Resume UFO tremolo if UFO exists
+            if(ufo && ufo.x > -50 && ufo.x < W+50) {
+              ufo.tremoloPlaying = false; // Reset flag so it can restart
+              ufo.playTremolo();
+              ufo.tremoloPlaying = true;
             }
           }
         }, 100);
@@ -998,6 +1033,7 @@
           combo = 0; // UFO resets combo but gives big points
           score+=ufo.points; updateHUD(); 
           floatingTexts.push(new FloatingText(`+${ufo.points}`, ufo.x, ufo.y-10)); 
+          ufo.stopTremolo(); // Stop tremolo sound when destroyed
           ufo.alive=false; b.dead=true; 
           beep('square', 900, .09, .03);
           // Create bigger explosion for UFO
