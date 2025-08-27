@@ -15,11 +15,11 @@
     .score, .lives, .level{font-variant-numeric:tabular-nums;}
     .pill{display:inline-block; padding:.25rem .5rem; border-radius:9999px; background:rgba(255,255,255,.06); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);}
     .center{position:absolute; inset:0; display:grid; place-items:center;}
-    .panel{pointer-events:auto; text-align:center; background:rgba(6,10,18,.74); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:22px 24px; backdrop-filter: blur(8px); box-shadow:0 10px 40px rgba(0,0,0,.35);}
+    .panel{pointer-events:auto; text-align:center; background:rgba(6,10,18,.74); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:22px 24px; backdrop-filter: blur(8px); box-shadow:0 10px 40px rgba(0,0,0,.35); z-index:1000;}
     .panel h1{margin:.1rem 0 0.35rem; font-size:clamp(24px, 5vw, 40px); letter-spacing:.04em;}
     .panel p{margin:.4rem 0; color:#c8d0ff; font-size:clamp(12px, 2.8vw, 16px)}
     .kbd{display:inline-block; min-width:1.6em; text-align:center; padding:.18rem .45rem; border-radius:8px; background:#0d1322; border:1px solid rgba(255,255,255,.14); box-shadow: inset 0 -2px 0 rgba(255,255,255,.06), 0 4px 16px rgba(0,0,0,.35);}
-    .btn{pointer-events:auto; cursor:pointer; margin-top:.6rem; display:inline-block; background:linear-gradient(180deg,#2ef29f,#19ce85); color:#02120a; font-weight:800; border:none; padding:.6rem 1rem; border-radius:12px; box-shadow:0 10px 30px rgba(23, 232, 142, .45);}
+    .btn{pointer-events:auto; cursor:pointer; margin-top:.6rem; display:inline-block; background:linear-gradient(180deg,#2ef29f,#19ce85); color:#02120a; font-weight:800; border:none; padding:.6rem 1rem; border-radius:12px; box-shadow:0 10px 30px rgba(23, 232, 142, .45); position:relative; z-index:1001; text-decoration:none; user-select:none; -webkit-user-select:none;}
     .tiny{font-size:12px; opacity:.85}
     .hidden{display:none}
     .mobile-only{display:none}
@@ -884,6 +884,8 @@
     }
 
     function startGame(){
+      console.log('Starting game...');
+      
       // Clear any existing timeouts first
       if(window.nextLevelTimeout) {
         clearTimeout(window.nextLevelTimeout);
@@ -906,7 +908,16 @@
       };
       
       player = new Player(); setupLevel(); updateHUD(); hideAllPanels();
-      if(audio.state!=='running') audio.resume();
+      
+      // Initialize audio context with user gesture
+      if(audio.state!=='running') {
+        audio.resume().then(() => {
+          console.log('Audio context resumed');
+        }).catch(e => {
+          console.log('Audio failed to start:', e);
+        });
+      }
+      
       stopBGM();
       setTimeout(() => {
         if(state === 'playing') playBGM('normal');
@@ -1441,20 +1452,57 @@
       console.groupCollapsed('Invaders self-tests'); results.forEach(r=>console.log(r)); console.log(`${passed}/${results.length} tests passed`); console.groupEnd();
     }
 
-    // Buttons
-    document.getElementById('btn-start').addEventListener('click', startGame);
-    document.getElementById('btn-restart').addEventListener('click', ()=>{ restart(); startGame(); });
+    // Ensure DOM is loaded and initialize buttons
+    function initializeButtons() {
+      const btnStart = document.getElementById('btn-start');
+      const btnRestart = document.getElementById('btn-restart');
+      const btnTutorial = document.getElementById('btn-tutorial');
+      const btnTutorialClose = document.getElementById('btn-tutorial-close');
+      
+      if (btnStart) {
+        btnStart.addEventListener('click', (e) => {
+          e.preventDefault();
+          console.log('Start button clicked');
+          startGame();
+        });
+        btnStart.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          console.log('Start button touched');
+          startGame();
+        });
+      }
+      
+      if (btnRestart) {
+        btnRestart.addEventListener('click', (e) => {
+          e.preventDefault();
+          restart(); 
+          startGame();
+        });
+      }
+      
+      if (btnTutorial) {
+        btnTutorial.addEventListener('click', (e) => {
+          e.preventDefault();
+          document.getElementById('screen-title').classList.add('hidden');
+          document.getElementById('screen-tutorial').classList.remove('hidden');
+        });
+      }
+      
+      if (btnTutorialClose) {
+        btnTutorialClose.addEventListener('click', (e) => {
+          e.preventDefault();
+          document.getElementById('screen-tutorial').classList.add('hidden');
+          document.getElementById('screen-title').classList.remove('hidden');
+        });
+      }
+    }
     
-    // Tutorial button
-    document.getElementById('btn-tutorial').addEventListener('click', () => {
-      document.getElementById('screen-title').classList.add('hidden');
-      document.getElementById('screen-tutorial').classList.remove('hidden');
-    });
-    
-    document.getElementById('btn-tutorial-close').addEventListener('click', () => {
-      document.getElementById('screen-tutorial').classList.add('hidden');
-      document.getElementById('screen-title').classList.remove('hidden');
-    });
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeButtons);
+    } else {
+      initializeButtons();
+    }
 
     // Prevent page scroll on space/arrow
     window.addEventListener('keydown', e=>{ if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); }, {passive:false});
