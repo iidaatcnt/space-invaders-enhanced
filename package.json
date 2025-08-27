@@ -1,0 +1,22 @@
+{
+  "name": "space-invaders-enhanced",
+  "version": "1.0.0",
+  "description": "Enhanced Space Invaders game built with HTML5 Canvas",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'No build required for static HTML'"
+  },
+  "keywords": [
+    "game",
+    "space-invaders",
+    "html5",
+    "canvas",
+    "javascript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}
