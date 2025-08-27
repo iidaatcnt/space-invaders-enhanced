@@ -1547,11 +1547,23 @@
     }
 
     function draw(){
-      // Clear entire canvas
+      // Clear entire canvas with dark blue background
       ctx.fillStyle = '#0b0f1a';
       ctx.fillRect(0, 0, W, H);
       
+      // Always draw stars for visual feedback
       drawStars();
+      
+      // Debug info for mobile
+      if(window.innerWidth <= 768) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`State: ${state}`, 10, 30);
+        ctx.fillText(`Player: ${player ? 'YES' : 'NO'}`, 10, 50);
+        ctx.fillText(`Invaders: ${invaders.length}`, 10, 70);
+        ctx.fillText(`Game Scale: ${gameScale.toFixed(2)}`, 10, 90);
+      }
       
       // Draw shields first (background)
       for(const sh of shields) {
@@ -1563,17 +1575,26 @@
         if(p && !p.dead) p.draw();
       }
       
-      // Draw player prominently
+      // Draw player with force visibility
       if(player) {
-        console.log('Drawing player at:', player.x, player.y);
         player.draw();
-      } else {
-        console.log('No player to draw');
+        // Draw a bright circle around player for debugging
+        if(window.innerWidth <= 768) {
+          ctx.strokeStyle = '#ff00ff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(player.x, player.y, 50, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
       
       // Draw invaders
+      let aliveInvaders = 0;
       for(const i of invaders) {
-        if(i && i.alive) i.draw();
+        if(i && i.alive) {
+          i.draw();
+          aliveInvaders++;
+        }
       }
       
       // Draw bullets
@@ -1596,6 +1617,13 @@
       
       for(const ft of floatingTexts) {
         if(ft && !ft.dead) ft.draw();
+      }
+      
+      // Mobile debug info continued
+      if(window.innerWidth <= 768) {
+        ctx.fillStyle = '#ffff00';
+        ctx.fillText(`Alive Invaders: ${aliveInvaders}`, 10, 110);
+        ctx.fillText(`Bullets: ${bullets.length}`, 10, 130);
       }
       
       // Wave transition effect
@@ -1626,12 +1654,22 @@
       if(flashT>0){ ctx.fillStyle='rgba(255,255,255,'+flashT.toFixed(2)+')'; ctx.fillRect(0,0,W,H); flashT-=0.016; }
     }
 
-    // Starfield backdrop
+    // Starfield backdrop - enhanced for mobile visibility
     const stars = Array.from({length:130},()=>({x:Math.random()*W, y:Math.random()*H, s: Math.random()*1.5+0.5}));
     function drawStars(){
       ctx.save();
-      for(const st of stars){ st.y+= st.s*0.4; if(st.y>H) st.y=0; ctx.globalAlpha = clamp(0.5 + st.s/2, 0.5, 1); ctx.fillStyle='#bac6ff'; ctx.fillRect(st.x, st.y, 2, 2); }
-      ctx.globalAlpha=1; ctx.restore();
+      for(const st of stars){ 
+        st.y += st.s * 0.4; 
+        if(st.y > H) st.y = 0; 
+        
+        // Brighter, larger stars for mobile
+        const size = window.innerWidth <= 768 ? 3 : 2;
+        ctx.globalAlpha = clamp(0.7 + st.s/2, 0.7, 1); 
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(st.x, st.y, size, size); 
+      }
+      ctx.globalAlpha = 1; 
+      ctx.restore();
     }
 
     // --- Self-tests (run once on load; see console) ---
@@ -1725,6 +1763,17 @@
 
     updateHUD();
 
+    // Initialize game state for mobile if needed
+    if(window.innerWidth <= 768 && state === 'title') {
+      // Auto-start on mobile for testing
+      setTimeout(() => {
+        if(state === 'title') {
+          console.log('Auto-starting game on mobile');
+          startGame();
+        }
+      }, 1000);
+    }
+    
     // Run tests, then start loop
     runSelfTests();
     requestAnimationFrame(loop);
