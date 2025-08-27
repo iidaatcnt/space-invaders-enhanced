@@ -319,6 +319,7 @@
         this.x=W/2; this.y=H-60; this.w=40; this.h=22; this.speed=320; this.cool=0; 
         this.powerUp = null;
         this.powerUpTime = 0;
+        this.invulnerable = 0; // Invulnerability time after hit
       }
       update(dt){
         const left = keys.has('ArrowLeft')||keys.has('KeyA');
@@ -327,6 +328,11 @@
         this.x += ax * this.speed * dt;
         this.x = clamp(this.x, 24, W-24);
         this.cool -= dt;
+        
+        // Invulnerability timer
+        if(this.invulnerable > 0) {
+          this.invulnerable -= dt;
+        }
         
         // Power-up timer
         if(this.powerUp && this.powerUpTime > 0){
@@ -356,6 +362,11 @@
       }
       draw(){
         ctx.save(); ctx.translate(this.x, this.y);
+        
+        // Invulnerability flashing
+        if(this.invulnerable > 0 && Math.sin(Date.now() * 0.02) > 0) {
+          ctx.globalAlpha = 0.5;
+        }
         
         // Power-up aura
         if(this.powerUp){
@@ -826,7 +837,12 @@
         }
         
         // Lose when invaders reach player line
-        if(maxY >= player.y - 10){ gameOver(); }
+        if(maxY >= player.y - 10){ 
+          // Final explosion when invaders reach player
+          createExplosion(player.x, player.y, '#ff4444', 30);
+          floatingTexts.push(new FloatingText('OVERRUN!', W/2, H/2));
+          gameOver(); 
+        }
       }
 
       // UFO spawn (not during boss battles)
@@ -898,7 +914,22 @@
       for(const b of enemyBullets){ if(b.dead) continue; const br=b.rect();
         for(const sh of shields){ if(sh.hit(b.x, b.y)){ b.dead=true; break; } }
         if(b.dead) continue;
-        if(overlap(br, player.rect())){ b.dead=true; lives--; updateHUD(); beep('triangle',120,.12,.02); screenFlash(); if(lives<=0) return gameOver(); player.x=W/2; enemyBullets = enemyBullets.filter(bb=>bb.y < player.y-40); }
+        if(overlap(br, player.rect()) && player.invulnerable <= 0){ 
+          b.dead=true; lives--; updateHUD(); 
+          beep('triangle',120,.12,.02); 
+          screenFlash(); 
+          
+          // Player hit particle explosion
+          createExplosion(player.x, player.y, '#ff4444', 20);
+          floatingTexts.push(new FloatingText('HIT!', player.x, player.y - 30));
+          
+          // Set invulnerability period
+          player.invulnerable = 1.5;
+          
+          if(lives<=0) return gameOver(); 
+          player.x=W/2; 
+          enemyBullets = enemyBullets.filter(bb=>bb.y < player.y-40); 
+        }
       }
 
       // Player vs power-ups
