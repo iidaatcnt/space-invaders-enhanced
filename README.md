@@ -2,6 +2,28 @@
 
 A modern take on the classic Space Invaders arcade game, built with HTML5 Canvas and vanilla JavaScript.
 
+## クレジット / Credits
+
+このプログラムは、**Nao@あなたの夢を叶えるFP**さんが作成したオリジナルのインベーダーゲームをベースに改良・拡張したものです。
+
+素晴らしい基盤となるゲームを作成していただいたNaoさんに心より感謝申し上げます。オリジナルの完成度の高いコードとゲームデザインがあったからこそ、これらの拡張機能を追加することができました。
+
+### 開発経緯
+
+Naoさんが作成されたHTML5 Canvasベースのインベーダーゲームに以下の機能を追加しました：
+- パーティクル爆発エフェクト
+- パワーアップシステム（3種類）
+- コンボシステム
+- モバイル対応
+- Vercelデプロイ設定
+
+## フィードバック / Feedback
+
+このゲームに関するご意見、ご要望、不具合報告などは、改良版の開発者である私（iidaatcnt）までお願いいたします。オリジナル作者のNaoさんではなく、私にご連絡ください。
+
+- GitHub Issues: https://github.com/iidaatcnt/space-invaders-enhanced/issues
+- 改良版開発者: iidaatcnt
+
 ## Features
 
 - Classic Space Invaders gameplay
