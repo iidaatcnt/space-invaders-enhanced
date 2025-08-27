@@ -47,9 +47,9 @@
         <div id="screen-title" class="panel">
           <h1>SPACE INVADERS</h1>
           <p><span class="kbd">←</span> / <span class="kbd">→</span> または <span class="kbd">A</span> / <span class="kbd">D</span>：移動　　<span class="kbd">SPACE</span>：ショット</p>
-          <p><span class="kbd">SHIFT</span>：必殺技（1回だけ）</p>
           <p><span class="kbd">P</span>：一時停止　　<span class="kbd">R</span>：やり直し</p>
           <p class="tiny">時々、上空に<span style="color:var(--accent); font-weight:800;">UFO</span>が出現！ 撃墜で高得点（50 / 100 / 150 / 300）。</p>
+          <p class="tiny"><span style="color:#ff9d42;">オレンジ</span>や<span style="color:#ff4242;">赤い敵</span>、<span style="color:#ff9d42;">💊</span><span style="color:#42c3ff;">💊</span><span style="color:#42ff88;">💊</span>パワーアップ、5レベル毎の<span style="color:#ff4444;">ボス戦</span>！</p>
           <button id="btn-start" class="btn">ゲーム開始（Enter）</button>
         </div>
         <div id="screen-gameover" class="panel hidden">
@@ -98,7 +98,6 @@
 
     let state='title';
     let score=0, hiscore= Number(localStorage.getItem('inv_hi')||0), level=1, lives=3;
-    let specialAvailable = true; // 1ゲームに1回
     let combo = 0;
     let comboTimer = 0;
     let waveTransition = false;
@@ -111,8 +110,7 @@
       enemiesKilled: 0,
       maxCombo: 0,
       bossesDefeated: 0,
-      powerUpsCollected: 0,
-      specialUsed: false
+      powerUpsCollected: 0
     };
 
     // HUD hooks
@@ -138,7 +136,6 @@
       'combo_master': { name: 'コンボマスター', desc: '10連続コンボを達成', icon: '🔥' },
       'boss_slayer': { name: 'ボス討伐者', desc: 'ボスを倒した', icon: '👑' },
       'power_collector': { name: 'パワーアップ収集家', desc: 'パワーアップを10個取得', icon: '💎' },
-      'special_user': { name: '必殺技使い', desc: '必殺技を使用', icon: '⚡' },
       'survivor': { name: 'サバイバー', desc: 'レベル10に到達', icon: '🛡️' },
       'high_scorer': { name: 'ハイスコアラー', desc: '10000点を獲得', icon: '⭐' }
     };
@@ -159,9 +156,6 @@
           break;
         case 'power_collector':
           unlock = sessionStats.powerUpsCollected >= 10;
-          break;
-        case 'special_user':
-          unlock = sessionStats.specialUsed;
           break;
         case 'survivor':
           unlock = level >= 10;
@@ -191,7 +185,6 @@
       if(state==='title' && (e.code==='Enter' || e.code==='Space')) startGame();
       if(e.code==='KeyP') togglePause();
       if(e.code==='KeyR') restart();
-      if(e.code==='ShiftLeft' || e.code==='ShiftRight'){ useSpecial(); }
     };
     const up = e=>{ keys.delete(e.code); };
     window.addEventListener('keydown', down);
@@ -222,15 +215,6 @@
       handleTouch(mobileRight, 'ArrowRight');
       handleTouch(mobileFire, 'Space');
       
-      // Double tap for special attack
-      let lastTap = 0;
-      mobileFire.addEventListener('touchstart', (e) => {
-        const now = Date.now();
-        if(now - lastTap < 300){
-          useSpecial();
-        }
-        lastTap = now;
-      });
     }
 
     // ===== Audio =====
@@ -389,20 +373,6 @@
       rect(){ return {x:this.x-20, y:this.y-8, w:40, h:22}; }
     }
 
-    // Special attack (1回/ゲーム)
-    function useSpecial(){
-      if(!specialAvailable || state!=='playing') return;
-      specialAvailable = false;
-      sessionStats.specialUsed = true;
-      // ワイドミサイル: 左右に広がる7連射（太弾）
-      for(let i=-3;i<=3;i++){
-        const dx = i*12;
-        bullets.push(new Bullet(player.x + dx, player.y-18, -520, 'player', 6, 18));
-      }
-      beep('sawtooth', 500, .2, .05);
-      floatingTexts.push(new FloatingText('必殺技!', player.x, player.y-30));
-      checkAllAchievements();
-    }
 
     class Invader{ 
       constructor(x,y,row){ 
@@ -674,7 +644,7 @@
         window.nextLevelTimeout = null;
       }
       
-      state='playing'; score=0; level=1; lives=3; specialAvailable=true;
+      state='playing'; score=0; level=1; lives=3;
       combo = 0; comboTimer = 0; // Reset combo
       waveTransition = false; waveTransitionTimer = 0; // Reset transition
       
@@ -683,8 +653,7 @@
         enemiesKilled: 0,
         maxCombo: 0,
         bossesDefeated: 0,
-        powerUpsCollected: 0,
-        specialUsed: false
+        powerUpsCollected: 0
       };
       
       player = new Player(); setupLevel(); updateHUD(); hideAllPanels();
