@@ -125,18 +125,33 @@
     const rand=(a,b)=>Math.random()*(b-a)+a;
     const choice=arr=>arr[(Math.random()*arr.length)|0];
 
-    // High DPI scaling
+    // Simplified canvas scaling for mobile
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
+    
     function resizeCanvas(){
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const cssW = canvas.clientWidth;
-      const cssH = canvas.clientHeight;
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round(cssH * dpr);
-      ctx.setTransform(dpr,0,0,dpr,0,0); // scale drawing to CSS pixels
+      const container = canvas.parentElement;
+      const containerRect = container.getBoundingClientRect();
+      
+      // Set canvas size to match container
+      canvas.width = 960;
+      canvas.height = 600;
+      
+      // Scale context to fit the CSS size
+      const scaleX = containerRect.width / 960;
+      const scaleY = containerRect.height / 600;
+      const scale = Math.min(scaleX, scaleY);
+      
+      console.log('Canvas resize:', { 
+        containerSize: { w: containerRect.width, h: containerRect.height },
+        canvasSize: { w: canvas.width, h: canvas.height },
+        scale 
+      });
     }
-    new ResizeObserver(resizeCanvas).observe(canvas);
+    
+    // Resize on load and window resize
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('load', resizeCanvas);
     resizeCanvas();
 
     // ===== Game State =====
@@ -459,7 +474,10 @@
         }
       }
       draw(){
-        ctx.save(); ctx.translate(this.x, this.y);
+        if(!this) return;
+        
+        ctx.save(); 
+        ctx.translate(this.x, this.y);
         
         // Invulnerability flashing
         if(this.invulnerable > 0 && Math.sin(Date.now() * 0.02) > 0) {
@@ -478,10 +496,19 @@
           ctx.restore();
         }
         
-        ctx.fillStyle = '#c7f7ff';
-        ctx.fillRect(-20, 6, 40, 6);
-        ctx.fillRect(-12, 0, 24, 8);
-        ctx.fillRect(-4, -8, 8, 16);
+        // Draw player ship with bright colors for visibility
+        ctx.fillStyle = '#00ffff';
+        ctx.fillRect(-20, 6, 40, 6);   // Bottom part
+        ctx.fillRect(-12, 0, 24, 8);   // Middle part  
+        ctx.fillRect(-4, -8, 8, 16);   // Top part
+        
+        // Add outline for better visibility
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-20, 6, 40, 6);
+        ctx.strokeRect(-12, 0, 24, 8);
+        ctx.strokeRect(-4, -8, 8, 16);
+        
         ctx.restore();
       }
       rect(){ return {x:this.x-20, y:this.y-8, w:40, h:22}; }
@@ -1393,18 +1420,56 @@
     }
 
     function draw(){
-      ctx.clearRect(0,0,W,H);
+      // Clear entire canvas
+      ctx.fillStyle = '#0b0f1a';
+      ctx.fillRect(0, 0, W, H);
+      
       drawStars();
-      for(const sh of shields) sh.draw();
-      for(const p of powerUps) p.draw();
-      if(player) player.draw();
-      for(const i of invaders) i.draw();
-      for(const b of bullets) b.draw();
-      for(const b of enemyBullets) b.draw();
-      if(ufo) ufo.draw();
-      if(boss) boss.draw();
-      for(const p of particles) p.draw();
-      for(const ft of floatingTexts) ft.draw();
+      
+      // Draw shields first (background)
+      for(const sh of shields) {
+        if(sh) sh.draw();
+      }
+      
+      // Draw power-ups
+      for(const p of powerUps) {
+        if(p && !p.dead) p.draw();
+      }
+      
+      // Draw player prominently
+      if(player) {
+        console.log('Drawing player at:', player.x, player.y);
+        player.draw();
+      } else {
+        console.log('No player to draw');
+      }
+      
+      // Draw invaders
+      for(const i of invaders) {
+        if(i && i.alive) i.draw();
+      }
+      
+      // Draw bullets
+      for(const b of bullets) {
+        if(b && !b.dead) b.draw();
+      }
+      
+      for(const b of enemyBullets) {
+        if(b && !b.dead) b.draw();
+      }
+      
+      // Draw UFO and boss
+      if(ufo && ufo.alive) ufo.draw();
+      if(boss && boss.alive) boss.draw();
+      
+      // Draw particles and text on top
+      for(const p of particles) {
+        if(p && p.life > 0) p.draw();
+      }
+      
+      for(const ft of floatingTexts) {
+        if(ft && !ft.dead) ft.draw();
+      }
       
       // Wave transition effect
       if(waveTransition){
