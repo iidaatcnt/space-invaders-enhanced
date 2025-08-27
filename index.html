@@ -421,6 +421,11 @@
           e.preventDefault();
           e.stopPropagation();
           
+          // Initialize audio on first touch (iOS requirement)
+          if(!audioInitialized) {
+            initializeAudio();
+          }
+          
           // Vibration feedback if supported
           if('vibrate' in navigator){
             navigator.vibrate(vibration);
@@ -457,6 +462,12 @@
       if(mobilePause){
         mobilePause.addEventListener('touchstart', (e) => {
           e.preventDefault();
+          
+          // Initialize audio on first touch (iOS requirement)
+          if(!audioInitialized) {
+            initializeAudio();
+          }
+          
           if('vibrate' in navigator) navigator.vibrate(15);
           togglePause();
         });
@@ -476,9 +487,39 @@
     let muted = false;
     let bgMusicPlaying = false;
     let currentBgMusic = null;
+    let audioInitialized = false;
+    
+    // Initialize audio for iOS compatibility
+    function initializeAudio(){
+      if(audioInitialized) return Promise.resolve();
+      
+      return audio.resume().then(() => {
+        // Play a silent sound to unlock iOS audio
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(audio.destination);
+        osc.start();
+        osc.stop(audio.currentTime + 0.01);
+        
+        audioInitialized = true;
+        console.log('Audio initialized for iOS');
+      }).catch(e => {
+        console.warn('Audio initialization failed:', e);
+      });
+    }
     
     function beep(type='square', freq=440, dur=0.06, gain=0.015){
-      if(muted || audio.state!=='running') return;
+      if(muted) return;
+      
+      // Try to initialize audio if not running
+      if(audio.state !== 'running' && !audioInitialized) {
+        initializeAudio();
+        return; // Skip this beep, next one should work
+      }
+      
+      if(audio.state !== 'running') return;
       const t0 = audio.currentTime;
       const o = audio.createOscillator();
       const g = audio.createGain();
@@ -491,7 +532,7 @@
     
     // Simple background music using oscillators
     function playBGM(type = 'normal'){
-      if(muted || audio.state !== 'running' || bgMusicPlaying) return;
+      if(muted || audio.state !== 'running' || bgMusicPlaying || !audioInitialized) return;
       
       bgMusicPlaying = true;
       const melody = type === 'boss' ? 
@@ -1087,13 +1128,11 @@
       
       player = new Player(); setupLevel(); updateHUD(); hideAllPanels();
       
-      // Initialize audio context with user gesture
-      if(audio.state!=='running') {
-        audio.resume().then(() => {
-          console.log('Audio context resumed');
-        }).catch(e => {
-          console.log('Audio failed to start:', e);
-        });
+      // Audio should already be initialized by button press
+      if(audio.state === 'running' && audioInitialized) {
+        console.log('Audio ready for game');
+      } else {
+        console.log('Audio not ready, will initialize on first interaction');
       }
       
       stopBGM();
@@ -1560,12 +1599,12 @@
       // Debug info for mobile
       if(window.innerWidth <= 768) {
         ctx.fillStyle = '#ffffff';
-        ctx.font = '16px sans-serif';
+        ctx.font = '14px sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`State: ${state}`, 10, 30);
-        ctx.fillText(`Player: ${player ? 'YES' : 'NO'}`, 10, 50);
+        ctx.fillText(`State: ${state}`, 10, 25);
+        ctx.fillText(`Player: ${player ? 'YES' : 'NO'}`, 10, 40);
+        ctx.fillText(`Audio: ${audioInitialized ? '🔊' : '🔇'}`, 10, 55);
         ctx.fillText(`Invaders: ${invaders.length}`, 10, 70);
-        ctx.fillText(`Game Scale: ${gameScale.toFixed(2)}`, 10, 90);
       }
       
       // Draw shields first (background)
@@ -1707,16 +1746,21 @@
       const btnTutorialClose = document.getElementById('btn-tutorial-close');
       
       if (btnStart) {
-        btnStart.addEventListener('click', (e) => {
+        const startGameWithAudio = (e) => {
           e.preventDefault();
-          console.log('Start button clicked');
-          startGame();
-        });
-        btnStart.addEventListener('touchstart', (e) => {
-          e.preventDefault();
-          console.log('Start button touched');
-          startGame();
-        });
+          console.log('Start button pressed');
+          
+          // Initialize audio on game start (iOS requirement)
+          initializeAudio().then(() => {
+            startGame();
+          }).catch(() => {
+            // Start game anyway if audio fails
+            startGame();
+          });
+        };
+        
+        btnStart.addEventListener('click', startGameWithAudio);
+        btnStart.addEventListener('touchstart', startGameWithAudio);
       }
       
       if (btnRestart) {
