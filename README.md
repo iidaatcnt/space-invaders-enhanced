@@ -93,6 +93,7 @@ Works on all modern browsers that support:
 - 🏆 Achievement system with persistent tracking
 - 🎵 Improved audio effects and background music
 - 🛡️ Redesigned shield system with realistic physics
+- ⚖️ Balanced gameplay for casual players (reduced enemy count, more lives)
 
 ## License
 
