@@ -501,6 +501,7 @@
     let bgMusicPlaying = false;
     let currentBgMusic = null;
     let audioInitialized = false;
+    let victoryMusicPlaying = false;
     
     // Initialize audio for iOS compatibility
     function initializeAudio(){
@@ -541,6 +542,47 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
       o.connect(g).connect(audio.destination);
       o.start(t0); o.stop(t0+dur);
+    }
+    
+    // Victory fanfare for boss defeat
+    function playVictoryFanfare() {
+      if(muted || audio.state !== 'running') return;
+      
+      victoryMusicPlaying = true;
+      const victoryNotes = [
+        // Triumphant ascending melody
+        {freq: 523, delay: 0},      // C5
+        {freq: 659, delay: 100},    // E5
+        {freq: 784, delay: 200},    // G5
+        {freq: 1047, delay: 300},   // C6
+        {freq: 784, delay: 500},    // G5
+        {freq: 1047, delay: 600},   // C6
+        {freq: 1319, delay: 700},   // E6
+        {freq: 1568, delay: 900},   // G6
+        // Finale
+        {freq: 1047, delay: 1200},  // C6
+        {freq: 784, delay: 1300},   // G5
+        {freq: 1047, delay: 1400},  // C6
+        {freq: 1319, delay: 1500},  // E6
+        {freq: 1568, delay: 1700},  // G6
+        {freq: 2093, delay: 1900},  // C7 - Grand finish
+      ];
+      
+      victoryNotes.forEach(note => {
+        setTimeout(() => {
+          if(!victoryMusicPlaying) return;
+          beep('square', note.freq, .15, .05);
+          beep('sine', note.freq/2, .12, .04);
+          if(note.freq > 1000) {
+            beep('triangle', note.freq * 1.5, .08, .03);
+          }
+        }, note.delay);
+      });
+      
+      // Stop after fanfare
+      setTimeout(() => {
+        victoryMusicPlaying = false;
+      }, 2500);
     }
     
     // Simple background music using oscillators
@@ -1120,14 +1162,122 @@
         this.hp--;
         if(this.hp <= 0){
           this.alive = false;
-          // Big explosion
-          for(let i = 0; i < 50; i++){
-            particles.push(new Particle(this.x + rand(-60, 60), this.y + rand(-30, 30), '#ff4444'));
+          
+          // Stop boss BGM
+          stopBGM();
+          
+          // Play victory fanfare
+          playVictoryFanfare();
+          
+          // Create epic multi-stage explosion sequence
+          const explosionStages = [
+            {delay: 0, x: 0, y: 0, count: 40, type: 'explosion', color: '#ff4444'},
+            {delay: 100, x: -30, y: -20, count: 30, type: 'firework', color: '#ffaa00'},
+            {delay: 200, x: 30, y: -20, count: 30, type: 'firework', color: '#ffff00'},
+            {delay: 300, x: -40, y: 20, count: 35, type: 'sparkle', color: '#00ff00'},
+            {delay: 400, x: 40, y: 20, count: 35, type: 'sparkle', color: '#00ffff'},
+            {delay: 500, x: 0, y: 0, count: 50, type: 'explosion', color: '#ffffff'},
+            {delay: 700, x: 0, y: -30, count: 40, type: 'firework', color: '#ff00ff'},
+            {delay: 900, x: 0, y: 0, count: 60, type: 'explosion', color: '#ffaa00'},
+            {delay: 1100, x: 0, y: 0, count: 80, type: 'sparkle', color: '#ffffff'},
+          ];
+          
+          // Execute explosion stages
+          explosionStages.forEach(stage => {
+            setTimeout(() => {
+              createExplosion(
+                this.x + stage.x, 
+                this.y + stage.y, 
+                stage.color, 
+                stage.count, 
+                stage.type
+              );
+              
+              // Add screen shake for each stage
+              screenShake = Math.max(screenShake, 10 + stage.count / 10);
+            }, stage.delay);
+          });
+          
+          // Create expanding shockwave rings
+          for(let ring = 0; ring < 5; ring++) {
+            setTimeout(() => {
+              const ringCount = 16;
+              for(let i = 0; i < ringCount; i++) {
+                const angle = (Math.PI * 2 * i) / ringCount;
+                const speed = 300 + ring * 50;
+                particles.push({
+                  x: this.x,
+                  y: this.y,
+                  vx: Math.cos(angle) * speed,
+                  vy: Math.sin(angle) * speed,
+                  life: 3 - ring * 0.3,
+                  color: ['#ff0000', '#ff6600', '#ffff00', '#00ff00', '#0099ff'][ring],
+                  size: 10 - ring,
+                  type: 'shockwave',
+                  gravity: 0,
+                  initialLife: 3 - ring * 0.3,
+                  update(dt) {
+                    this.x += this.vx * dt;
+                    this.y += this.vy * dt;
+                    this.vx *= 0.98;
+                    this.vy *= 0.98;
+                    this.life -= dt * 0.5;
+                  },
+                  draw() {
+                    if(this.life <= 0) return;
+                    ctx.save();
+                    const ratio = this.life / this.initialLife;
+                    ctx.globalAlpha = ratio * 0.8;
+                    
+                    // Draw glowing ring particle
+                    const size = this.size * (2 - ratio);
+                    ctx.shadowBlur = 30;
+                    ctx.shadowColor = this.color;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Inner bright core
+                    ctx.fillStyle = '#ffffff';
+                    ctx.globalAlpha = ratio;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, size * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.restore();
+                  }
+                });
+              }
+            }, ring * 200);
           }
-          // Big points
+          
+          // Big points with rainbow text
           score += 1000 * level;
-          floatingTexts.push(new FloatingText(`BOSS DEFEATED! +${1000 * level}`, this.x, this.y));
-          beep('sawtooth', 100, .3, .05);
+          
+          // Multiple floating texts at different positions
+          const messages = [
+            {text: '👑 BOSS DEFEATED! 👑', y: -40, delay: 0},
+            {text: `+${1000 * level} POINTS!`, y: 0, delay: 300},
+            {text: '🎊 VICTORY! 🎊', y: 40, delay: 600},
+            {text: '⭐ PERFECT! ⭐', y: -60, delay: 900}
+          ];
+          
+          messages.forEach(msg => {
+            setTimeout(() => {
+              floatingTexts.push(new FloatingText(msg.text, this.x, this.y + msg.y));
+            }, msg.delay);
+          });
+          
+          // Sustained screen shake
+          let shakeIntensity = 25;
+          const shakeInterval = setInterval(() => {
+            screenShake = shakeIntensity;
+            shakeIntensity *= 0.9;
+            if(shakeIntensity < 1) {
+              clearInterval(shakeInterval);
+            }
+          }, 100);
         }
       }
     }
