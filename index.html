@@ -1531,7 +1531,39 @@
           // Set invulnerability period
           player.invulnerable = 1.5;
           
-          if(lives<=0) return gameOver(); 
+          if(lives<=0) {
+            // In boss levels, proceed to next level instead of game over
+            if(isBossLevel) {
+              // Show bonus stage failed message
+              floatingTexts.push(new FloatingText('BONUS STAGE FAILED - PROCEEDING...', W/2, H/2));
+              
+              // Reset for next level
+              lives = 3; // Give some lives back
+              level++; // Move to next level
+              isBossLevel = false; // Clear boss level flag
+              
+              // Start next level after a short delay
+              waveTransition = true;
+              waveTransitionTimer = 2.5;
+              state = 'transition';
+              
+              setTimeout(() => {
+                if(state === 'transition') {
+                  setupLevel();
+                  stopBGM();
+                  setTimeout(() => {
+                    if(state === 'playing') playBGM('main');
+                  }, 100);
+                  state = 'playing';
+                  waveTransition = false;
+                }
+              }, 2500);
+              
+              return;
+            } else {
+              return gameOver();
+            }
+          }
           player.x=W/2; 
           enemyBullets = enemyBullets.filter(bb=>bb.y < player.y-40); 
         }
