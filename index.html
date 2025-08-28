@@ -888,13 +888,40 @@
         this.x = Math.random()<0.5? -60 : W+60; 
         this.vx = this.x<0? rand(110,160) : -rand(110,160); 
         this.alive=true; 
-        this.points= choice([50,100,150,300]); 
+        // Much higher points for UFO!
+        this.points= choice([500, 1000, 1500, 3000]); 
         this.tremoloTimer = null;
         this.tremoloPlaying = false;
+        this.glowPhase = 0;
+        this.trailParticles = [];
       }
       
       update(dt){ 
         this.x += this.vx*dt; 
+        this.glowPhase += dt * 3;
+        
+        // Create trail particles
+        if(Math.random() < 0.3 && this.alive) {
+          this.trailParticles.push({
+            x: this.x + rand(-20, 20),
+            y: this.y + rand(-10, 10),
+            vx: -this.vx * 0.2 + rand(-20, 20),
+            vy: rand(-10, 10),
+            life: 1,
+            color: choice(['#ff6d7a', '#ffaa00', '#ffff00'])
+          });
+        }
+        
+        // Update trail particles
+        for(let i = this.trailParticles.length - 1; i >= 0; i--) {
+          const p = this.trailParticles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt * 2;
+          if(p.life <= 0) {
+            this.trailParticles.splice(i, 1);
+          }
+        }
         
         // Play tremolo sound while UFO is on screen
         if(this.x > -50 && this.x < W+50 && !this.tremoloPlaying) {
@@ -944,13 +971,52 @@
       
       draw(){ 
         if(!this.alive) return; 
+        
+        // Draw trail particles
+        for(const p of this.trailParticles) {
+          ctx.save();
+          ctx.globalAlpha = p.life * 0.6;
+          ctx.fillStyle = p.color;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = p.color;
+          const size = 4 * p.life;
+          ctx.fillRect(p.x - size/2, p.y - size/2, size, size);
+          ctx.restore();
+        }
+        
         ctx.save(); 
         ctx.translate(this.x, this.y); 
+        
+        // Glowing aura effect
+        const glowSize = 30 + Math.sin(this.glowPhase) * 10;
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, glowSize);
+        gradient.addColorStop(0, 'rgba(255, 109, 122, 0.6)');
+        gradient.addColorStop(0.5, 'rgba(255, 170, 0, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 255, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-glowSize, -glowSize, glowSize * 2, glowSize * 2);
+        
+        // UFO body with enhanced colors
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ff6d7a';
         ctx.fillStyle='#ff6d7a'; 
         ctx.fillRect(-24,-6,48,12); 
         ctx.fillRect(-16,-10,32,8); 
-        ctx.fillStyle='#ffd1d6'; 
-        ctx.fillRect(-6,-14,12,6); 
+        
+        // Cockpit with animation
+        const cockpitGlow = Math.abs(Math.sin(this.glowPhase * 2));
+        ctx.fillStyle=`rgba(255, 255, 255, ${0.8 + cockpitGlow * 0.2})`; 
+        ctx.fillRect(-8,-10,16,4); 
+        
+        // Flashing lights
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ffeb5c';
+        ctx.fillStyle='#ffeb5c'; 
+        for(let i=-3;i<4;i++) {
+          const lightBright = Math.sin(this.glowPhase * 4 + i) > 0 ? 1 : 0.3;
+          ctx.globalAlpha = lightBright;
+          ctx.fillRect(i*7-2,0,4,4); 
+        }
         ctx.restore(); 
       }
       
@@ -1618,18 +1684,73 @@
         if(!b.dead && ufo){ if(overlap(br, ufo.rect())){ 
           combo = 0; // UFO resets combo but gives big points
           score+=ufo.points; updateHUD(); 
-          floatingTexts.push(new FloatingText(`+${ufo.points}`, ufo.x, ufo.y-10)); 
+          
+          // Giant floating text for UFO with emojis
+          floatingTexts.push(new FloatingText(`🛸 UFO DESTROYED! +${ufo.points} 🛸`, ufo.x, ufo.y-20)); 
+          
           ufo.stopTremolo(); // Stop tremolo sound when destroyed
           ufo.alive=false; b.dead=true; 
           
-          // Special UFO destruction sound - descending melody
-          beep('square', 1200, .08, .04);
-          setTimeout(() => beep('square', 900, .08, .04), 80);
-          setTimeout(() => beep('square', 600, .08, .04), 160);
-          setTimeout(() => beep('sawtooth', 400, .12, .05), 240);
+          // Epic UFO destruction sound - multi-layered
+          beep('square', 1200, .1, .04);
+          beep('sine', 1800, .08, .03);
+          setTimeout(() => {
+            beep('square', 900, .1, .04);
+            beep('triangle', 1350, .08, .03);
+          }, 80);
+          setTimeout(() => {
+            beep('square', 600, .1, .04);
+            beep('sine', 900, .08, .03);
+          }, 160);
+          setTimeout(() => {
+            beep('sawtooth', 400, .15, .05);
+            beep('square', 200, .12, .08);
+          }, 240);
           
-          // Create bigger explosion for UFO
-          createExplosion(ufo.x, ufo.y, '#ff6d7a', 25);
+          // Massive multi-colored explosion for UFO
+          createExplosion(ufo.x, ufo.y, '#ff6d7a', 30, 'explosion');
+          createExplosion(ufo.x, ufo.y, '#ffaa00', 25, 'firework');
+          createExplosion(ufo.x, ufo.y, '#ffff00', 20, 'sparkle');
+          createExplosion(ufo.x, ufo.y, '#00ffff', 15, 'sparkle');
+          
+          // Screen shake for UFO destruction
+          screenShake = 15;
+          
+          // Bonus particles in a circle
+          for(let i = 0; i < 8; i++) {
+            const angle = (Math.PI * 2 * i) / 8;
+            const speed = 200;
+            particles.push({
+              x: ufo.x,
+              y: ufo.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              life: 2,
+              color: '#ffffff',
+              size: 6,
+              type: 'explosion',
+              gravity: 0,
+              initialLife: 2,
+              update(dt) {
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+                this.life -= dt;
+              },
+              draw() {
+                if(this.life <= 0) return;
+                ctx.save();
+                ctx.globalAlpha = this.life / this.initialLife;
+                ctx.fillStyle = this.color;
+                const size = this.size * (this.life / this.initialLife);
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = this.color;
+                ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
+                ctx.restore();
+              }
+            });
+          }
         }}
         
         // Boss collision
