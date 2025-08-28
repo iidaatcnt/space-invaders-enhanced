@@ -1304,6 +1304,7 @@
       // Update game logic only when playing or in transition
       if(state==='playing'||state==='transition') update(dt); 
       draw(); 
+      ctx.restore(); // Restore from screen shake
       requestAnimationFrame(loop);
     }
 
@@ -1439,20 +1440,49 @@
           updateHUD();
           checkAllAchievements();
           
-          // Show combo feedback
+          // Show combo feedback with enhanced effects
           if(combo > 1){
-            const comboText = combo >= 10 ? `MAX COMBO x${comboMultiplier}!` : `x${comboMultiplier} COMBO`;
+            const comboText = combo >= 10 ? `🔥 MAX COMBO x${comboMultiplier}! 🔥` : `⚡ x${comboMultiplier} COMBO ⚡`;
             floatingTexts.push(new FloatingText(comboText, inv.x, inv.y - 20));
             floatingTexts.push(new FloatingText(`+${points}`, inv.x, inv.y));
+            
+            // Enhanced multi-tone sound for combos
             const pitch = 300 + combo * 50;
-            beep('square', Math.min(pitch, 800), .06, .02);
+            beep('square', Math.min(pitch, 800), .08, .02);
+            setTimeout(() => beep('sine', Math.min(pitch + 200, 1000), .06, .01), 50);
+            if(combo >= 5) {
+              setTimeout(() => beep('triangle', Math.min(pitch + 400, 1200), .05, .01), 100);
+            }
+            if(combo >= 10) {
+              // Super combo sound!
+              setTimeout(() => beep('sawtooth', 1500, .1, .03), 150);
+            }
           } else {
             beep('square', 300, .06, .02);
           }
           
-          // Create explosion for invader
+          // Create massive explosion for invader with multiple particle types
           const colors = ['#8aa0ff','#8aa0ff','#66e6ff','#66e6ff','#98ffcc'];
-          createExplosion(inv.x, inv.y, colors[inv.row] || '#98ffcc', 15 + combo);
+          const baseColor = colors[inv.row] || '#98ffcc';
+          
+          // Main explosion
+          createExplosion(inv.x, inv.y, baseColor, 20 + combo * 3, 'explosion');
+          
+          // Add sparkles
+          if(combo > 3){
+            createExplosion(inv.x, inv.y, '#ffff00', 10 + combo, 'sparkle');
+          }
+          
+          // Add fireworks for high combos
+          if(combo >= 7){
+            createExplosion(inv.x, inv.y, '#ff00ff', 8, 'firework');
+            createExplosion(inv.x, inv.y, '#00ffff', 8, 'firework');
+          }
+          
+          // Screen shake for big combos
+          if(combo >= 5){
+            screenShake = Math.min(combo * 2, 20);
+          }
           break; 
         }}
         if(!b.dead){ for(const sh of shields){ if(sh.hit(b.x, b.y)){ b.dead=true; break; } } }
@@ -1582,41 +1612,152 @@
 
     // Particle system for explosions
     class Particle{
-      constructor(x, y, color){
+      constructor(x, y, color, type = 'normal'){
         this.x = x;
         this.y = y;
-        this.vx = (Math.random() - 0.5) * 280;
-        this.vy = (Math.random() - 0.5) * 280;
-        this.life = 1;
+        this.type = type;
+        
+        if(type === 'explosion'){
+          // Bigger, faster explosion particles
+          this.vx = (Math.random() - 0.5) * 500;
+          this.vy = (Math.random() - 0.5) * 500;
+          this.size = Math.random() * 8 + 4;
+          this.life = 1.5;
+          this.gravity = 200;
+        } else if(type === 'sparkle'){
+          // Sparkly star particles
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 400 + 100;
+          this.vx = Math.cos(angle) * speed;
+          this.vy = Math.sin(angle) * speed;
+          this.size = Math.random() * 6 + 2;
+          this.life = 2;
+          this.gravity = -50; // Float upward
+          this.rotation = Math.random() * Math.PI * 2;
+          this.rotSpeed = (Math.random() - 0.5) * 10;
+        } else if(type === 'firework'){
+          // Firework style burst
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 300 + 200;
+          this.vx = Math.cos(angle) * speed;
+          this.vy = Math.sin(angle) * speed - 100;
+          this.size = Math.random() * 5 + 3;
+          this.life = 1.8;
+          this.gravity = 150;
+          this.trail = [];
+        } else {
+          // Normal particles
+          this.vx = (Math.random() - 0.5) * 280;
+          this.vy = (Math.random() - 0.5) * 280;
+          this.size = Math.random() * 4 + 2;
+          this.life = 1;
+          this.gravity = 0;
+        }
+        
         this.color = color;
-        this.size = Math.random() * 4 + 2;
+        this.initialLife = this.life;
       }
+      
       update(dt){
+        // Store trail for firework type
+        if(this.type === 'firework' && this.trail){
+          this.trail.push({x: this.x, y: this.y, life: this.life});
+          if(this.trail.length > 10) this.trail.shift();
+        }
+        
         this.x += this.vx * dt;
         this.y += this.vy * dt;
-        this.vx *= 0.98;
-        this.vy *= 0.98;
-        this.life -= dt * 2;
+        
+        if(this.gravity){
+          this.vy += this.gravity * dt;
+        }
+        
+        if(this.type === 'sparkle'){
+          this.rotation += this.rotSpeed * dt;
+          this.vx *= 0.95;
+          this.vy *= 0.95;
+        } else {
+          this.vx *= 0.98;
+          this.vy *= 0.98;
+        }
+        
+        this.life -= dt * (this.type === 'explosion' ? 3 : 2);
         if(this.life <= 0) this.life = 0;
       }
+      
       draw(){
         if(this.life <= 0) return;
         ctx.save();
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = this.color;
-        const size = this.size * this.life;
-        ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
-        // Glow effect
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = this.color;
-        ctx.fillRect(this.x - size/4, this.y - size/4, size/2, size/2);
+        
+        const lifeRatio = this.life / this.initialLife;
+        ctx.globalAlpha = lifeRatio;
+        
+        if(this.type === 'sparkle'){
+          // Draw as star
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.rotation);
+          ctx.fillStyle = this.color;
+          const size = this.size * lifeRatio;
+          
+          // Draw 4-point star
+          ctx.beginPath();
+          ctx.moveTo(0, -size);
+          ctx.lineTo(size/3, -size/3);
+          ctx.lineTo(size, 0);
+          ctx.lineTo(size/3, size/3);
+          ctx.lineTo(0, size);
+          ctx.lineTo(-size/3, size/3);
+          ctx.lineTo(-size, 0);
+          ctx.lineTo(-size/3, -size/3);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Add glow
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = this.color;
+          ctx.fill();
+        } else if(this.type === 'firework'){
+          // Draw with trail
+          if(this.trail){
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = this.size * lifeRatio;
+            ctx.beginPath();
+            for(let i = 0; i < this.trail.length; i++){
+              const t = this.trail[i];
+              if(i === 0) ctx.moveTo(t.x, t.y);
+              else ctx.lineTo(t.x, t.y);
+            }
+            ctx.lineTo(this.x, this.y);
+            ctx.stroke();
+          }
+          
+          // Draw head
+          ctx.fillStyle = this.color;
+          const size = this.size * lifeRatio * 1.5;
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = this.color;
+          ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
+        } else {
+          // Normal/explosion particles
+          ctx.fillStyle = this.color;
+          const size = this.size * lifeRatio;
+          ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
+          
+          // Enhanced glow effect
+          ctx.shadowBlur = this.type === 'explosion' ? 25 : 10;
+          ctx.shadowColor = this.color;
+          ctx.fillRect(this.x - size/4, this.y - size/4, size/2, size/2);
+        }
+        
         ctx.restore();
       }
     }
     
     let particles = [];
     
-    function createExplosion(x, y, color, count = null){
+    let screenShake = 0;
+    
+    function createExplosion(x, y, color, count = null, type = 'normal'){
       // Use mobile-optimized particle count if not specified
       if(count === null) count = PARTICLE_COUNT;
       
@@ -1624,11 +1765,21 @@
       if(particles.length > MAX_PARTICLES) particles.splice(0, 50);
       
       for(let i = 0; i < count; i++){
-        particles.push(new Particle(x, y, color));
+        particles.push(new Particle(x, y, color, type));
       }
     }
 
     function draw(){
+      // Apply screen shake
+      ctx.save();
+      if(screenShake > 0){
+        const shakeX = (Math.random() - 0.5) * screenShake;
+        const shakeY = (Math.random() - 0.5) * screenShake;
+        ctx.translate(shakeX, shakeY);
+        screenShake *= 0.9; // Decay shake
+        if(screenShake < 0.1) screenShake = 0;
+      }
+      
       // Clear entire canvas with dark blue background
       ctx.fillStyle = '#0b0f1a';
       ctx.fillRect(0, 0, W, H);
