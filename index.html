@@ -302,6 +302,9 @@
 
     let state='title';
     let score=0, hiscore= Number(localStorage.getItem('inv_hi')||0), level=1, lives=5;
+    let isDemo = false; // Demo play mode flag
+    let demoTimer = 0; // Timer for starting demo
+    const DEMO_START_DELAY = 10; // Start demo after 10 seconds of inactivity
     
     // Student progress tracking
     let sessionStats = {
@@ -388,6 +391,16 @@
     const keys = new Set();
     const down = e=>{
       keys.add(e.code);
+      
+      // Reset demo timer on any key press
+      demoTimer = 0;
+      
+      // If in demo mode, return to title on any key
+      if(isDemo) {
+        stopDemo();
+        return;
+      }
+      
       if(state==='title' && (e.code==='Enter' || e.code==='Space')) startGame();
       if(e.code==='KeyP') togglePause();
       if(e.code==='KeyR') restart();
@@ -1142,8 +1155,63 @@
       floatingTexts.push(new FloatingText('BOSS BATTLE!', W/2, H/2));
     }
 
+    function startDemo() {
+      console.log('Starting demo play...');
+      isDemo = true;
+      demoTimer = 0;
+      
+      // Start game in demo mode
+      state='playing'; 
+      score=0; 
+      level=1; 
+      lives=3;
+      combo = 0; 
+      comboTimer = 0;
+      waveTransition = false; 
+      waveTransitionTimer = 0;
+      
+      player = new Player();
+      setupLevel();
+      updateHUD();
+      hideAllPanels();
+      
+      // Start demo BGM at lower volume
+      if(audio.state === 'running' && audioInitialized && !muted) {
+        playBGM('main');
+      }
+    }
+    
+    function stopDemo() {
+      console.log('Stopping demo play...');
+      isDemo = false;
+      state = 'title';
+      demoTimer = 0;
+      
+      // Clear game state
+      invaders.length = 0;
+      bullets.length = 0;
+      enemyBullets.length = 0;
+      powerUps.length = 0;
+      particles.length = 0;
+      floatingTexts.length = 0;
+      
+      if(ufo) {
+        ufo.stopTremolo();
+        ufo = null;
+      }
+      if(boss) boss = null;
+      
+      // Stop music and show title
+      stopBGM();
+      hideAllPanels();
+      titleScreen.classList.remove('hidden');
+      updateHUD();
+    }
+    
     function startGame(){
       console.log('Starting game...');
+      isDemo = false;
+      demoTimer = 0;
       
       // Clear any existing timeouts first
       if(window.nextLevelTimeout) {
@@ -1231,6 +1299,12 @@
     }
 
     function gameOver(){
+      // If demo mode, just return to title
+      if(isDemo) {
+        stopDemo();
+        return;
+      }
+      
       state='gameover'; hiscore = Math.max(hiscore, score); localStorage.setItem('inv_hi', String(hiscore)); updateHUD();
       
       // Save session stats for teacher review
@@ -1301,6 +1375,15 @@
     let last=0;
     function loop(ts){
       const now=ts||0; const dt = Math.min(0.033,(now - last)/1000||0); last=now; 
+      
+      // Update demo timer in title screen
+      if(state === 'title' && !isDemo) {
+        demoTimer += dt;
+        if(demoTimer >= DEMO_START_DELAY) {
+          startDemo();
+        }
+      }
+      
       // Update game logic only when playing or in transition
       if(state==='playing'||state==='transition') update(dt); 
       draw(); 
@@ -1309,6 +1392,52 @@
     }
 
     function update(dt){
+      // Demo auto-play logic
+      if(isDemo && player) {
+        // Simple AI for demo mode
+        const nearestInvader = invaders
+          .filter(i => i.alive)
+          .sort((a, b) => Math.abs(a.x - player.x) - Math.abs(b.x - player.x))[0];
+        
+        if(nearestInvader) {
+          // Move towards nearest invader
+          const targetX = nearestInvader.x;
+          const diff = targetX - player.x;
+          
+          // Clear movement keys
+          keys.delete('ArrowLeft');
+          keys.delete('ArrowRight');
+          
+          // Set movement based on target
+          if(Math.abs(diff) > 10) {
+            if(diff < 0) keys.add('ArrowLeft');
+            else keys.add('ArrowRight');
+          }
+          
+          // Auto-fire periodically
+          if(Math.random() < 0.05) {
+            keys.add('Space');
+            setTimeout(() => keys.delete('Space'), 100);
+          }
+        }
+        
+        // Dodge bullets
+        const dangerBullet = enemyBullets
+          .filter(b => !b.dead && Math.abs(b.x - player.x) < 50 && b.y > player.y - 100)
+          .sort((a, b) => b.y - a.y)[0];
+        
+        if(dangerBullet) {
+          keys.delete('ArrowLeft');
+          keys.delete('ArrowRight');
+          // Dodge away from bullet
+          if(dangerBullet.x < player.x && player.x < W - 40) {
+            keys.add('ArrowRight');
+          } else if(player.x > 40) {
+            keys.add('ArrowLeft');
+          }
+        }
+      }
+      
       player.update(dt);
       
       // Combo timer
@@ -1830,6 +1959,18 @@
         ctx.fillText(`Invaders: ${invaders.length}`, 10, 70);
       }
       
+      // Show demo mode indicator
+      if(isDemo) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.font = 'bold 24px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('DEMO PLAY', W/2, 40);
+        ctx.font = '16px monospace';
+        ctx.fillText('Press any key to return to title', W/2, 65);
+        ctx.restore();
+      }
+      
       // Draw shields first (background)
       for(const sh of shields) {
         if(sh) sh.draw();
@@ -2026,16 +2167,8 @@
 
     updateHUD();
 
-    // Initialize game state for mobile if needed
-    if(window.innerWidth <= 768 && state === 'title') {
-      // Auto-start on mobile for testing
-      setTimeout(() => {
-        if(state === 'title') {
-          console.log('Auto-starting game on mobile');
-          startGame();
-        }
-      }, 1000);
-    }
+    // Initialize demo timer
+    demoTimer = 0;
     
     // Run tests, then start loop
     runSelfTests();
